@@ -8,10 +8,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -21,7 +19,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,8 +32,8 @@ import dev.chuds.stillclock.data.ClockSettings
 import dev.chuds.stillclock.data.FontPreset
 import dev.chuds.stillclock.data.Tab
 import dev.chuds.stillclock.data.TimeFormat
-import dev.chuds.stillclock.ui.components.StillDivider
 import dev.chuds.stillclock.ui.components.StillMenuItem
+import dev.chuds.stillclock.ui.components.StillVerb
 import dev.chuds.stillclock.ui.theme.StillColors
 import dev.chuds.stillclock.ui.theme.StillTypography
 import java.time.ZoneId
@@ -55,6 +52,7 @@ fun SettingsScreen(
     onCycleDefaultTab: () -> Unit,
     onPickAlarmSound: () -> Unit,
     onCycleSnooze: () -> Unit,
+    onToggleHaptics: () -> Unit,
     onBack: () -> Unit,
 ) {
     var zoneInput by remember(settings.secondZone) { mutableStateOf(settings.secondZone) }
@@ -176,41 +174,11 @@ fun SettingsScreen(
                 subtitle = "${settings.snoozeMinutes} ${if (settings.snoozeMinutes == 1) "minute" else "minutes"}",
                 onClick = onCycleSnooze,
             )
-
-            Spacer(Modifier.height(28.dp))
-            StillDivider()
-            Spacer(Modifier.height(16.dp))
-            Text(
-                text = "privacy posture, in code",
-                style = StillTypography.Caption,
-                color = StillColors.DimGray,
+            StillMenuItem(
+                title = "haptic feedback",
+                subtitle = if (settings.hapticsEnabled) "subtle vibration on taps" else "off",
+                onClick = onToggleHaptics,
             )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "androidmanifest.xml — six alarm-related permissions, no internet",
-                style = StillTypography.Caption,
-                color = StillColors.Gray,
-            )
-            Text(
-                text = "data_extraction_rules.xml — excludes everything from cloud + transfer",
-                style = StillTypography.Caption,
-                color = StillColors.Gray,
-            )
-            Text(
-                text = "app/build.gradle.kts — androidx + compose + datastore only",
-                style = StillTypography.Caption,
-                color = StillColors.Gray,
-            )
-
-            Spacer(Modifier.height(24.dp))
-            Text(
-                text = "still ecosystem",
-                style = StillTypography.Caption,
-                color = StillColors.DimGray,
-            )
-            Text(text = "launcher", style = StillTypography.Caption, color = StillColors.Gray)
-            Text(text = "notes", style = StillTypography.Caption, color = StillColors.Gray)
-            Text(text = "cal", style = StillTypography.Caption, color = StillColors.Gray)
         }
 
         FooterBar(
@@ -223,24 +191,18 @@ fun SettingsScreen(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FooterBar(modifier: Modifier = Modifier, onBack: () -> Unit) {
-    val source = remember { MutableInteractionSource() }
     Row(
-        modifier = modifier.padding(horizontal = 24.dp, vertical = 22.dp),
-        horizontalArrangement = Arrangement.Start,
+        modifier = modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = "back",
-            style = StillTypography.Menu,
+        StillVerb(
+            label = "back",
+            onClick = onBack,
+            bordered = true,
             color = StillColors.MutedWhite,
-            modifier = Modifier.combinedClickable(
-                interactionSource = source,
-                indication = null,
-                onClick = onBack,
-            ),
         )
     }
 }

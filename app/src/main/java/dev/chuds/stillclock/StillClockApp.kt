@@ -48,7 +48,9 @@ import dev.chuds.stillclock.ui.alarms.AlarmActionSheet
 import dev.chuds.stillclock.ui.alarms.AlarmEditScreen
 import dev.chuds.stillclock.ui.alarms.AlarmsScreen
 import dev.chuds.stillclock.ui.clock.ClockScreen
+import dev.chuds.stillclock.ui.components.LocalHaptics
 import dev.chuds.stillclock.ui.components.StillTabBar
+import dev.chuds.stillclock.ui.components.rememberHapticsPerformer
 import dev.chuds.stillclock.ui.settings.SettingsScreen
 import dev.chuds.stillclock.ui.stopwatch.StopwatchScreen
 import dev.chuds.stillclock.ui.theme.LocalStillTypography
@@ -150,7 +152,12 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
         }
     }
 
-    CompositionLocalProvider(LocalStillTypography provides typography) {
+    val hapticsPerformer = rememberHapticsPerformer(settings.hapticsEnabled)
+
+    CompositionLocalProvider(
+        LocalStillTypography provides typography,
+        LocalHaptics provides hapticsPerformer,
+    ) {
         Box(modifier = Modifier.fillMaxSize().background(dev.chuds.stillclock.ui.theme.StillColors.OledBlack)) {
             AnimatedContent(
                 targetState = route,
@@ -322,6 +329,11 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
                                     else -> 1
                                 }
                                 preferencesRepository.setSnoozeMinutes(next)
+                            }
+                        },
+                        onToggleHaptics = {
+                            scope.launch {
+                                preferencesRepository.setHapticsEnabled(!settings.hapticsEnabled)
                             }
                         },
                         onBack = { route = Route.Tabs(settings.defaultTab) },

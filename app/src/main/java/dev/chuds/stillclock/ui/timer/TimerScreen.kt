@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.chuds.stillclock.data.TimerState
 import dev.chuds.stillclock.ui.components.SettingsHeader
+import dev.chuds.stillclock.ui.components.StillVerb
 import dev.chuds.stillclock.ui.theme.StillColors
 import dev.chuds.stillclock.ui.theme.StillTypography
 import kotlinx.coroutines.delay
@@ -168,7 +169,6 @@ private fun ChipRow(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RunningUi(
     remainingMs: Long,
@@ -188,33 +188,19 @@ private fun RunningUi(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
-            val left = remember { MutableInteractionSource() }
-            val right = remember { MutableInteractionSource() }
-            Text(
-                text = if (paused) "resume" else "pause",
-                style = StillTypography.Menu,
-                color = StillColors.SoftWhite,
-                modifier = Modifier.combinedClickable(
-                    interactionSource = left,
-                    indication = null,
-                    onClick = if (paused) onResume else onPause,
-                ),
+            StillVerb(
+                label = if (paused) "resume" else "pause",
+                onClick = if (paused) onResume else onPause,
             )
-            Text(
-                text = "cancel",
-                style = StillTypography.Menu,
+            StillVerb(
+                label = "cancel",
+                onClick = onCancel,
                 color = StillColors.MutedWhite,
-                modifier = Modifier.combinedClickable(
-                    interactionSource = right,
-                    indication = null,
-                    onClick = onCancel,
-                ),
             )
         }
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FinishedUi(onDismiss: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -222,17 +208,7 @@ private fun FinishedUi(onDismiss: () -> Unit) {
         Text(text = "time", style = StillTypography.Title, color = StillColors.MutedWhite)
         Text(text = "up", style = StillTypography.Title, color = StillColors.MutedWhite)
         Spacer(Modifier.height(32.dp))
-        val source = remember { MutableInteractionSource() }
-        Text(
-            text = "dismiss",
-            style = StillTypography.Menu,
-            color = StillColors.SoftWhite,
-            modifier = Modifier.combinedClickable(
-                interactionSource = source,
-                indication = null,
-                onClick = onDismiss,
-            ),
-        )
+        StillVerb(label = "dismiss", onClick = onDismiss)
     }
 }
 

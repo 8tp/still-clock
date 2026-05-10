@@ -1,9 +1,6 @@
 package dev.chuds.stillclock.ui.stopwatch
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,18 +17,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.chuds.stillclock.data.StopwatchState
 import dev.chuds.stillclock.ui.components.SettingsHeader
 import dev.chuds.stillclock.ui.components.StillDivider
+import dev.chuds.stillclock.ui.components.StillVerb
 import dev.chuds.stillclock.ui.theme.StillColors
 import dev.chuds.stillclock.ui.theme.StillTypography
 import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun StopwatchScreen(
     state: StopwatchState,
@@ -80,19 +76,18 @@ fun StopwatchScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
-                    Verb(
+                    StillVerb(
                         label = if (running) "stop" else "start",
-                        active = true,
                         onClick = onStartStop,
                     )
-                    Verb(
+                    StillVerb(
                         label = "lap",
-                        active = running,
+                        enabled = running,
                         onClick = if (running) onLap else ({}),
                     )
-                    Verb(
+                    StillVerb(
                         label = "reset",
-                        active = canReset,
+                        enabled = canReset,
                         onClick = if (canReset) onReset else ({}),
                     )
                 }
@@ -129,25 +124,6 @@ fun StopwatchScreen(
             }
         }
     }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun Verb(label: String, active: Boolean, onClick: () -> Unit) {
-    val source = remember { MutableInteractionSource() }
-    Text(
-        text = label,
-        style = StillTypography.Menu,
-        color = if (active) StillColors.SoftWhite else StillColors.DimGray,
-        modifier = Modifier
-            .combinedClickable(
-                enabled = active,
-                interactionSource = source,
-                indication = null,
-                onClick = onClick,
-            )
-            .padding(8.dp),
-    )
 }
 
 private fun formatStopwatch(ms: Long): String {

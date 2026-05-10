@@ -34,6 +34,7 @@ import dev.chuds.stillclock.data.TimeFormat
 import dev.chuds.stillclock.ui.components.SettingsHeader
 import dev.chuds.stillclock.ui.components.StillDivider
 import dev.chuds.stillclock.ui.components.StillToggle
+import dev.chuds.stillclock.ui.components.StillVerb
 import dev.chuds.stillclock.ui.theme.StillColors
 import dev.chuds.stillclock.ui.theme.StillTypography
 import java.util.Locale
@@ -174,31 +175,20 @@ private fun AlarmRow(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FooterNew(
     modifier: Modifier = Modifier,
     onNew: () -> Unit,
 ) {
-    val source = remember { MutableInteractionSource() }
     Column(modifier = modifier.padding(bottom = 92.dp)) {
         StillDivider()
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 14.dp),
+                .padding(horizontal = 24.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.Center,
         ) {
-            Text(
-                text = "new",
-                style = StillTypography.Menu,
-                color = StillColors.SoftWhite,
-                modifier = Modifier.combinedClickable(
-                    interactionSource = source,
-                    indication = null,
-                    onClick = onNew,
-                ),
-            )
+            StillVerb(label = "new", onClick = onNew, bordered = true)
         }
     }
 }

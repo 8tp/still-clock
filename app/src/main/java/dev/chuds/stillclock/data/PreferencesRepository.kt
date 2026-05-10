@@ -23,6 +23,7 @@ data class ClockSettings(
     val alarmSoundUri: String = "",
     val alarmSoundDisplayName: String = "",
     val snoozeMinutes: Int = 5,
+    val hapticsEnabled: Boolean = true,
 )
 
 private val FONT_PRESET_KEY = stringPreferencesKey("pref_font")
@@ -33,6 +34,7 @@ private val DEFAULT_TAB_KEY = stringPreferencesKey("pref_default_tab")
 private val ALARM_SOUND_URI_KEY = stringPreferencesKey("pref_alarm_sound_uri")
 private val ALARM_SOUND_DISPLAY_NAME_KEY = stringPreferencesKey("pref_alarm_sound_display_name")
 private val SNOOZE_MINUTES_KEY = intPreferencesKey("pref_snooze_minutes")
+private val HAPTICS_ENABLED_KEY = booleanPreferencesKey("pref_haptics_enabled")
 
 class PreferencesRepository(private val context: Context) {
 
@@ -54,6 +56,7 @@ class PreferencesRepository(private val context: Context) {
                 alarmSoundUri = prefs[ALARM_SOUND_URI_KEY] ?: "",
                 alarmSoundDisplayName = prefs[ALARM_SOUND_DISPLAY_NAME_KEY] ?: "",
                 snoozeMinutes = prefs[SNOOZE_MINUTES_KEY] ?: 5,
+                hapticsEnabled = prefs[HAPTICS_ENABLED_KEY] ?: true,
             )
         }
 
@@ -80,4 +83,7 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setSnoozeMinutes(minutes: Int) =
         context.stillClockDataStore.edit { it[SNOOZE_MINUTES_KEY] = minutes.coerceIn(1, 60) }
+
+    suspend fun setHapticsEnabled(value: Boolean) =
+        context.stillClockDataStore.edit { it[HAPTICS_ENABLED_KEY] = value }
 }

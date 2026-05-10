@@ -34,6 +34,7 @@ import dev.chuds.stillclock.data.TimeFormat
 import dev.chuds.stillclock.ui.components.StillDivider
 import dev.chuds.stillclock.ui.components.StillNumberPicker
 import dev.chuds.stillclock.ui.components.StillToggle
+import dev.chuds.stillclock.ui.components.StillVerb
 import dev.chuds.stillclock.ui.theme.StillColors
 import dev.chuds.stillclock.ui.theme.StillTypography
 import java.time.DayOfWeek
@@ -273,7 +274,6 @@ fun AlarmEditScreen(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FooterActions(
     modifier: Modifier = Modifier,
@@ -282,47 +282,31 @@ private fun FooterActions(
     onDelete: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    val saveSource = remember { MutableInteractionSource() }
-    val deleteSource = remember { MutableInteractionSource() }
-    val cancelSource = remember { MutableInteractionSource() }
     Column(modifier = modifier.padding(bottom = 32.dp).background(StillColors.OledBlack)) {
         StillDivider()
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "cancel",
-                style = StillTypography.Menu,
+            StillVerb(
+                label = "cancel",
+                onClick = onCancel,
+                bordered = true,
                 color = StillColors.MutedWhite,
-                modifier = Modifier.combinedClickable(
-                    interactionSource = cancelSource,
-                    indication = null,
-                    onClick = onCancel,
-                ),
             )
             if (!isNew) {
-                Text(
-                    text = "delete",
-                    style = StillTypography.Menu,
+                StillVerb(
+                    label = "delete",
+                    onClick = onDelete,
+                    bordered = true,
                     color = StillColors.Gray,
-                    modifier = Modifier.combinedClickable(
-                        interactionSource = deleteSource,
-                        indication = null,
-                        onClick = onDelete,
-                    ),
                 )
             }
-            Text(
-                text = "save",
-                style = StillTypography.Menu,
-                color = StillColors.SoftWhite,
-                modifier = Modifier.combinedClickable(
-                    interactionSource = saveSource,
-                    indication = null,
-                    onClick = onSave,
-                ),
+            StillVerb(
+                label = "save",
+                onClick = onSave,
+                bordered = true,
             )
         }
     }
