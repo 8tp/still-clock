@@ -1,12 +1,7 @@
 // Hand-rolled router — sealed Route, no NavCompose. Same shape as still-notes' StillNotesApp.
 package dev.chuds.stillclock
 
-import android.content.Intent
-import android.media.RingtoneManager
-import android.net.Uri
 import android.os.Build
-import android.provider.Settings
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -117,25 +112,6 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
     val notificationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { /* fall through; user can deny — alarms still fire over lockscreen */ }
-
-    val ringtoneLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        val data = result.data
-        if (data != null) {
-            val uri: Uri? = data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
-            scope.launch {
-                if (uri != null) {
-                    val title = runCatching {
-                        RingtoneManager.getRingtone(activityContext, uri).getTitle(activityContext)
-                    }.getOrNull().orEmpty()
-                    preferencesRepository.setAlarmSound(uri.toString(), title)
-                } else {
-                    preferencesRepository.setAlarmSound("", "")
-                }
-            }
-        }
-    }
 
     BackHandler(enabled = route !is Route.Tabs || (route as Route.Tabs).tab != Tab.Clock) {
         route = when (route) {
@@ -306,19 +282,11 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
                                 )
                             }
                         },
-                        onPickAlarmSound = {
-                            val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
-                                putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
-                                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
-                                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
-                                putExtra(
-                                    RingtoneManager.EXTRA_RINGTONE_EXISTING_URI,
-                                    settings.alarmSoundUri.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
-                                        ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
-                                )
-                            }
-                            runCatching { ringtoneLauncher.launch(intent) }
-                                .onFailure { Toast.makeText(activityContext, "no ringtone picker available", Toast.LENGTH_SHORT).show() }
+                        onSetAlarmSound = { uri, name ->
+                            scope.launch { preferencesRepository.setAlarmSound(uri, name) }
+                        },
+                        onSetTimerSound = { uri, name ->
+                            scope.launch { preferencesRepository.setTimerSound(uri, name) }
                         },
                         onCycleSnooze = {
                             scope.launch {

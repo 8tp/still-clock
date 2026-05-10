@@ -124,6 +124,7 @@ object AlarmsScheduler {
     const val EXTRA_ALARM_ID = "alarm_id"
     const val EXTRA_IS_SNOOZE = "is_snooze"
     const val EXTRA_KIND = "kind"
+    const val EXTRA_SOUND_URI = "sound_uri"
     const val KIND_ALARM = "alarm"
     const val KIND_TIMER = "timer"
 }

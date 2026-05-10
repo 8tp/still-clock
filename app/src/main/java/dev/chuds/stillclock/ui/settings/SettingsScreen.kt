@@ -32,14 +32,18 @@ import dev.chuds.stillclock.data.ClockSettings
 import dev.chuds.stillclock.data.FontPreset
 import dev.chuds.stillclock.data.Tab
 import dev.chuds.stillclock.data.TimeFormat
+import dev.chuds.stillclock.data.bundledToneFor
 import dev.chuds.stillclock.ui.components.StillMenuItem
 import dev.chuds.stillclock.ui.components.StillVerb
+import dev.chuds.stillclock.ui.sound.SoundPickerScreen
 import dev.chuds.stillclock.ui.theme.StillColors
 import dev.chuds.stillclock.ui.theme.StillTypography
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+
+private enum class SoundTarget { Alarm, Timer }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -50,13 +54,15 @@ fun SettingsScreen(
     onToggleSeconds: () -> Unit,
     onSetSecondZone: (String) -> Unit,
     onCycleDefaultTab: () -> Unit,
-    onPickAlarmSound: () -> Unit,
+    onSetAlarmSound: (uri: String, displayName: String) -> Unit,
+    onSetTimerSound: (uri: String, displayName: String) -> Unit,
     onCycleSnooze: () -> Unit,
     onToggleHaptics: () -> Unit,
     onBack: () -> Unit,
 ) {
     var zoneInput by remember(settings.secondZone) { mutableStateOf(settings.secondZone) }
     var zoneOpen by remember { mutableStateOf(false) }
+    var soundPicker by remember { mutableStateOf<SoundTarget?>(null) }
 
     Box(
         modifier = Modifier
@@ -165,9 +171,14 @@ fun SettingsScreen(
                 onClick = onCycleDefaultTab,
             )
             StillMenuItem(
-                title = "alarm sound",
-                subtitle = settings.alarmSoundDisplayName.ifBlank { "bundled tone" },
-                onClick = onPickAlarmSound,
+                title = "default alarm sound",
+                subtitle = soundSubtitle(settings.alarmSoundUri, settings.alarmSoundDisplayName, "still chime"),
+                onClick = { soundPicker = SoundTarget.Alarm },
+            )
+            StillMenuItem(
+                title = "timer sound",
+                subtitle = soundSubtitle(settings.timerSoundUri, settings.timerSoundDisplayName, "still chime"),
+                onClick = { soundPicker = SoundTarget.Timer },
             )
             StillMenuItem(
                 title = "snooze duration",
@@ -188,6 +199,19 @@ fun SettingsScreen(
                 .navigationBarsPadding(),
             onBack = onBack,
         )
+
+        soundPicker?.let { target ->
+            val isAlarm = target == SoundTarget.Alarm
+            SoundPickerScreen(
+                title = if (isAlarm) "default alarm sound" else "timer sound",
+                currentUri = if (isAlarm) settings.alarmSoundUri else settings.timerSoundUri,
+                onPick = { uri, name ->
+                    if (isAlarm) onSetAlarmSound(uri, name) else onSetTimerSound(uri, name)
+                    soundPicker = null
+                },
+                onBack = { soundPicker = null },
+            )
+        }
     }
 }
 
@@ -204,6 +228,16 @@ private fun FooterBar(modifier: Modifier = Modifier, onBack: () -> Unit) {
             bordered = true,
             color = StillColors.MutedWhite,
         )
+    }
+}
+
+private fun soundSubtitle(uri: String, displayName: String, defaultLabel: String): String {
+    val bundled = bundledToneFor(uri)
+    return when {
+        bundled != null -> "still ${bundled.label}"
+        uri.isBlank() -> defaultLabel
+        displayName.isNotBlank() -> displayName
+        else -> "system sound"
     }
 }
 

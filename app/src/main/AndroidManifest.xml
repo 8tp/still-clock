@@ -11,9 +11,13 @@
     - POST_NOTIFICATIONS:    Required on Android 13+ to surface alarm and timer notifications.
                              Requested at runtime, the first time the user enables an alarm
                              or starts a timer.
-    - SCHEDULE_EXACT_ALARM:  Required on Android 12+ for AlarmManager.setAlarmClock and the
-                             timer's setExactAndAllowWhileIdle. An alarm that fires ten
-                             minutes late is broken.
+    - SCHEDULE_EXACT_ALARM:  Required on Android 12 (API 31–32) for AlarmManager.setAlarmClock
+                             and the timer's setExactAndAllowWhileIdle. The user has to grant
+                             it manually from system settings (special "appop" permission).
+                             An alarm that fires ten minutes late is broken.
+    - USE_EXACT_ALARM:       Android 13+ replacement. Auto-granted to apps whose primary
+                             purpose is exact scheduling — alarm clocks, timers — so the
+                             user doesn't have to chase down a settings toggle on first run.
     - RECEIVE_BOOT_COMPLETED:Reschedule pending alarms after a reboot. AlarmManager forgets
                              everything across reboots, so without this every armed alarm dies.
     - USE_FULL_SCREEN_INTENT:Required on Android 14+ to launch the alarm-fires Activity over
@@ -30,6 +34,7 @@
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />

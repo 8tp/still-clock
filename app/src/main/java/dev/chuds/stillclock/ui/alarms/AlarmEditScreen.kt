@@ -31,10 +31,13 @@ import androidx.compose.ui.unit.dp
 import dev.chuds.stillclock.data.Alarm
 import dev.chuds.stillclock.data.ClockSettings
 import dev.chuds.stillclock.data.TimeFormat
+import dev.chuds.stillclock.data.bundledToneFor
 import dev.chuds.stillclock.ui.components.StillDivider
+import dev.chuds.stillclock.ui.components.StillMenuItem
 import dev.chuds.stillclock.ui.components.StillNumberPicker
 import dev.chuds.stillclock.ui.components.StillToggle
 import dev.chuds.stillclock.ui.components.StillVerb
+import dev.chuds.stillclock.ui.sound.SoundPickerScreen
 import dev.chuds.stillclock.ui.theme.StillColors
 import dev.chuds.stillclock.ui.theme.StillTypography
 import java.time.DayOfWeek
@@ -56,7 +59,10 @@ fun AlarmEditScreen(
     var label by remember { mutableStateOf(initial.label) }
     var days by remember { mutableStateOf(initial.daysOfWeek) }
     var soft by remember { mutableStateOf(initial.soft) }
+    var soundUri by remember { mutableStateOf(initial.soundUri ?: "") }
+    var soundDisplayName by remember { mutableStateOf(initial.soundDisplayName ?: "") }
     var pickerOpen by remember { mutableStateOf(false) }
+    var soundPickerOpen by remember { mutableStateOf(false) }
 
     val use24h = when (settings.timeFormat) {
         TimeFormat.Twelve -> false
@@ -234,6 +240,16 @@ fun AlarmEditScreen(
             StillDivider()
             Spacer(Modifier.height(16.dp))
 
+            StillMenuItem(
+                title = "sound",
+                subtitle = alarmSoundSubtitle(soundUri, soundDisplayName, settings),
+                onClick = { soundPickerOpen = true },
+            )
+
+            Spacer(Modifier.height(8.dp))
+            StillDivider()
+            Spacer(Modifier.height(16.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -265,12 +281,50 @@ fun AlarmEditScreen(
                         daysOfWeek = days,
                         soft = soft,
                         enabled = true,
+                        soundUri = soundUri.takeIf { it.isNotBlank() },
+                        soundDisplayName = soundDisplayName.takeIf { it.isNotBlank() },
                     ),
                 )
             },
             onDelete = onDelete,
             onCancel = onCancel,
         )
+
+        if (soundPickerOpen) {
+            SoundPickerScreen(
+                title = "alarm sound",
+                currentUri = soundUri,
+                onPick = { uri, name ->
+                    soundUri = uri
+                    soundDisplayName = name
+                    soundPickerOpen = false
+                },
+                onBack = { soundPickerOpen = false },
+            )
+        }
+    }
+}
+
+private fun alarmSoundSubtitle(
+    uri: String,
+    displayName: String,
+    settings: ClockSettings,
+): String {
+    if (uri.isBlank()) {
+        val defaultBundled = bundledToneFor(settings.alarmSoundUri)
+        val defaultName = when {
+            defaultBundled != null -> "still ${defaultBundled.label}"
+            settings.alarmSoundDisplayName.isNotBlank() -> settings.alarmSoundDisplayName
+            settings.alarmSoundUri.isNotBlank() -> "system sound"
+            else -> "still chime"
+        }
+        return "default · $defaultName"
+    }
+    val bundled = bundledToneFor(uri)
+    return when {
+        bundled != null -> "still ${bundled.label}"
+        displayName.isNotBlank() -> displayName
+        else -> "system sound"
     }
 }
 

@@ -12,8 +12,11 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import dev.chuds.stillclock.R
 import dev.chuds.stillclock.data.AlarmsRepository
+import dev.chuds.stillclock.data.BUNDLED_TONES
+import dev.chuds.stillclock.data.PreferencesRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -48,8 +51,15 @@ class AlarmReceiver : BroadcastReceiver() {
                 val label = alarm?.label.orEmpty()
                 val soft = alarm?.soft == true
 
-                postFiringNotification(app, alarmId, label, soft, isSnooze)
-                startFiresActivity(app, alarmId, label, soft, isSnooze, kind = AlarmsScheduler.KIND_ALARM)
+                val prefs = runCatching { PreferencesRepository(app).settings.first() }.getOrNull()
+                val resolvedSoundUri = listOfNotNull(
+                    alarm?.soundUri?.takeIf { it.isNotBlank() },
+                    prefs?.alarmSoundUri?.takeIf { it.isNotBlank() },
+                    BUNDLED_TONES.first().uri,
+                ).first()
+
+                postFiringNotification(app, alarmId, label, soft, isSnooze, resolvedSoundUri)
+                startFiresActivity(app, alarmId, label, soft, isSnooze, kind = AlarmsScheduler.KIND_ALARM, soundUri = resolvedSoundUri)
 
                 if (alarm != null && !isSnooze) {
                     if (alarm.daysOfWeek.isEmpty()) {
@@ -72,8 +82,14 @@ class AlarmReceiver : BroadcastReceiver() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                postTimerNotification(app)
-                startFiresActivity(app, "", "", soft = false, isSnooze = false, kind = AlarmsScheduler.KIND_TIMER)
+                val prefs = runCatching { PreferencesRepository(app).settings.first() }.getOrNull()
+                val resolvedSoundUri = listOfNotNull(
+                    prefs?.timerSoundUri?.takeIf { it.isNotBlank() },
+                    BUNDLED_TONES.first().uri,
+                ).first()
+
+                postTimerNotification(app, resolvedSoundUri)
+                startFiresActivity(app, "", "", soft = false, isSnooze = false, kind = AlarmsScheduler.KIND_TIMER, soundUri = resolvedSoundUri)
             } finally {
                 pending.finish()
             }
@@ -86,6 +102,7 @@ class AlarmReceiver : BroadcastReceiver() {
         label: String,
         soft: Boolean,
         isSnooze: Boolean,
+        soundUri: String,
     ) {
         if (!hasPostNotifications(context)) return
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -93,6 +110,7 @@ class AlarmReceiver : BroadcastReceiver() {
         val activityIntent = Intent(context, AlarmFiresActivity::class.java).apply {
             putExtra(AlarmsScheduler.EXTRA_ALARM_ID, alarmId)
             putExtra(AlarmsScheduler.EXTRA_KIND, AlarmsScheduler.KIND_ALARM)
+            putExtra(AlarmsScheduler.EXTRA_SOUND_URI, soundUri)
             putExtra(AlarmFiresActivity.EXTRA_LABEL, label)
             putExtra(AlarmFiresActivity.EXTRA_SOFT, soft)
             putExtra(AlarmFiresActivity.EXTRA_IS_SNOOZE, isSnooze)
@@ -120,12 +138,13 @@ class AlarmReceiver : BroadcastReceiver() {
         nm.notify(NOTIF_ID_ALARM, notification)
     }
 
-    private fun postTimerNotification(context: Context) {
+    private fun postTimerNotification(context: Context, soundUri: String) {
         if (!hasPostNotifications(context)) return
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         val activityIntent = Intent(context, AlarmFiresActivity::class.java).apply {
             putExtra(AlarmsScheduler.EXTRA_KIND, AlarmsScheduler.KIND_TIMER)
+            putExtra(AlarmsScheduler.EXTRA_SOUND_URI, soundUri)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION
         }
         val full = PendingIntent.getActivity(
@@ -156,10 +175,12 @@ class AlarmReceiver : BroadcastReceiver() {
         soft: Boolean,
         isSnooze: Boolean,
         kind: String,
+        soundUri: String,
     ) {
         val intent = Intent(context, AlarmFiresActivity::class.java).apply {
             putExtra(AlarmsScheduler.EXTRA_ALARM_ID, alarmId)
             putExtra(AlarmsScheduler.EXTRA_KIND, kind)
+            putExtra(AlarmsScheduler.EXTRA_SOUND_URI, soundUri)
             putExtra(AlarmFiresActivity.EXTRA_LABEL, label)
             putExtra(AlarmFiresActivity.EXTRA_SOFT, soft)
             putExtra(AlarmFiresActivity.EXTRA_IS_SNOOZE, isSnooze)

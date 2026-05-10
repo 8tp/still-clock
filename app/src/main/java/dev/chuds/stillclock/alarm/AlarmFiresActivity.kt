@@ -1,15 +1,12 @@
-// Full-screen alarm-fires Activity.
-//
-// Resolution of spec.md §15 q1 (bundled tone): the runtime gracefully no-ops when
-// res/raw/still_tone.ogg is absent (RawRes lookup falls back to the user's chosen ringtone
-// or to silence-with-vibration). Drop a CC0 .ogg into res/raw/ before release; see
-// res/raw/STILL_TONE_LICENSE.txt for the candidate license text.
+// Full-screen alarm-fires Activity. The sound URI is resolved by AlarmReceiver
+// (which already runs on Dispatchers.IO and can read prefs without main-thread
+// gymnastics) and passed in via EXTRA_SOUND_URI. We fall back to bundled chime
+// then system default if playback fails.
+// `still://<slug>` URIs resolve to res/raw via data/SoundCatalog.kt.
 package dev.chuds.stillclock.alarm
 
 import android.app.NotificationManager
 import android.content.Context
-import android.content.Intent
-import android.content.res.Resources
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
@@ -20,6 +17,7 @@ import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -52,7 +50,9 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import dev.chuds.stillclock.data.BUNDLED_TONES
 import dev.chuds.stillclock.data.PreferencesRepository
+import dev.chuds.stillclock.data.bundledToneFor
 import dev.chuds.stillclock.ui.theme.LocalStillTypography
 import dev.chuds.stillclock.ui.theme.StillColors
 import dev.chuds.stillclock.ui.theme.StillTheme
@@ -69,7 +69,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 class AlarmFiresActivity : ComponentActivity() {
 
@@ -111,8 +110,9 @@ class AlarmFiresActivity : ComponentActivity() {
         val label = intent.getStringExtra(EXTRA_LABEL).orEmpty()
         val soft = intent.getBooleanExtra(EXTRA_SOFT, false)
         val isSnooze = intent.getBooleanExtra(EXTRA_IS_SNOOZE, false)
+        val requestedSoundUri = intent.getStringExtra(AlarmsScheduler.EXTRA_SOUND_URI).orEmpty()
 
-        startSoundAndVibration(soft, kind == AlarmsScheduler.KIND_TIMER)
+        startSoundAndVibration(soft, requestedSoundUri)
 
         if (kind == AlarmsScheduler.KIND_TIMER) {
             timerAutoDismissJob = scope.launch {
@@ -186,7 +186,7 @@ class AlarmFiresActivity : ComponentActivity() {
         finish()
     }
 
-    private fun startSoundAndVibration(soft: Boolean, isTimer: Boolean) {
+    private fun startSoundAndVibration(soft: Boolean, requestedSoundUri: String) {
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val target = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
             .coerceAtLeast(1)
@@ -195,8 +195,24 @@ class AlarmFiresActivity : ComponentActivity() {
 
         val initialVolume = if (soft) 0f else target
 
-        val player = createMediaPlayer(initialVolume) ?: run {
-            // Tone unavailable; vibration alone still wakes the user.
+        val attrs = AudioAttributes.Builder()
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .setUsage(AudioAttributes.USAGE_ALARM)
+            .build()
+
+        val tryOrder = listOf(requestedSoundUri, BUNDLED_TONES.first().uri)
+            .filter { it.isNotBlank() }
+            .distinct()
+
+        var player: MediaPlayer? = null
+        for (uri in tryOrder) {
+            player = playFromUri(uri, attrs, initialVolume)
+            if (player != null) break
+        }
+        if (player == null) player = playSystemDefault(attrs, initialVolume)
+
+        if (player == null) {
+            Log.w(TAG, "no playable audio source — vibration only")
             startVibration()
             return
         }
@@ -216,65 +232,52 @@ class AlarmFiresActivity : ComponentActivity() {
         startVibration()
     }
 
-    private fun createMediaPlayer(initialVolume: Float): MediaPlayer? {
-        val attrs = AudioAttributes.Builder()
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .setUsage(AudioAttributes.USAGE_ALARM)
-            .build()
-
-        // Prefer the user's selected ringtone URI; fall back to bundled tone; then to default alarm.
-        val prefRepo = PreferencesRepository(applicationContext)
-        val settings = runCatching {
-            runBlocking { prefRepo.settings.let { flow -> flow.stateIn(scope).value } }
-        }.getOrNull() ?: dev.chuds.stillclock.data.ClockSettings()
-
-        val candidates: List<() -> MediaPlayer?> = listOfNotNull(
-            settings.alarmSoundUri.takeIf { it.isNotBlank() }?.let { uriString ->
-                {
-                    runCatching {
-                        MediaPlayer().apply {
-                            setAudioAttributes(attrs)
-                            setDataSource(this@AlarmFiresActivity, Uri.parse(uriString))
-                            isLooping = true
-                            setVolume(initialVolume, initialVolume)
-                            prepare()
-                            start()
-                        }
-                    }.getOrNull()
-                }
-            },
-            {
-                runCatching {
-                    val resId = resources.getIdentifier("still_tone", "raw", packageName)
-                    if (resId == 0) return@runCatching null
-                    MediaPlayer.create(this, resId)?.apply {
-                        setAudioAttributes(attrs)
-                        isLooping = true
-                        setVolume(initialVolume, initialVolume)
-                        start()
-                    }
-                }.getOrNull()
-            },
-            {
-                runCatching {
-                    val def = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
-                        ?: return@runCatching null
-                    MediaPlayer().apply {
-                        setAudioAttributes(attrs)
-                        setDataSource(this@AlarmFiresActivity, def)
-                        isLooping = true
-                        setVolume(initialVolume, initialVolume)
-                        prepare()
-                        start()
-                    }
-                }.getOrNull()
-            },
-        )
-        for (factory in candidates) {
-            val mp = factory()
-            if (mp != null) return mp
+    private fun playFromUri(
+        uriString: String,
+        attrs: AudioAttributes,
+        initialVolume: Float,
+    ): MediaPlayer? = runCatching {
+        val mp = MediaPlayer()
+        mp.setAudioAttributes(attrs)
+        val bundled = bundledToneFor(uriString)
+        if (bundled != null) {
+            val afd = resources.openRawResourceFd(bundled.rawResId)
+                ?: error("missing raw resource for ${bundled.slug}")
+            try {
+                mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+            } finally {
+                runCatching { afd.close() }
+            }
+        } else {
+            mp.setDataSource(this@AlarmFiresActivity, Uri.parse(uriString))
         }
-        return null
+        mp.isLooping = true
+        mp.prepare()
+        mp.setVolume(initialVolume, initialVolume)
+        mp.start()
+        Log.i(TAG, "playing $uriString")
+        mp
+    }.getOrElse {
+        Log.w(TAG, "playFromUri failed for $uriString: ${it.message}")
+        null
+    }
+
+    private fun playSystemDefault(attrs: AudioAttributes, initialVolume: Float): MediaPlayer? {
+        val def = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
+            ?: return null
+        return runCatching {
+            MediaPlayer().apply {
+                setAudioAttributes(attrs)
+                setDataSource(this@AlarmFiresActivity, def)
+                isLooping = true
+                prepare()
+                setVolume(initialVolume, initialVolume)
+                start()
+            }
+        }.getOrElse {
+            Log.w(TAG, "playSystemDefault failed: ${it.message}")
+            null
+        }
     }
 
     private fun startVibration() {
@@ -305,6 +308,7 @@ class AlarmFiresActivity : ComponentActivity() {
     }
 
     companion object {
+        private const val TAG = "still-clock/fires"
         const val EXTRA_LABEL = "label"
         const val EXTRA_SOFT = "soft"
         const val EXTRA_IS_SNOOZE = "is_snooze"

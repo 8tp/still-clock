@@ -99,6 +99,8 @@ class AlarmsRepository(private val context: Context) {
                 o.put("daysOfWeek", days)
                 o.put("enabled", a.enabled)
                 o.put("soft", a.soft)
+                if (!a.soundUri.isNullOrBlank()) o.put("soundUri", a.soundUri)
+                if (!a.soundDisplayName.isNullOrBlank()) o.put("soundDisplayName", a.soundDisplayName)
                 arr.put(o)
             }
             return arr.toString()
@@ -126,6 +128,8 @@ class AlarmsRepository(private val context: Context) {
                         daysOfWeek = daySet,
                         enabled = o.optBoolean("enabled", true),
                         soft = o.optBoolean("soft", false),
+                        soundUri = o.optString("soundUri", "").takeIf { it.isNotBlank() },
+                        soundDisplayName = o.optString("soundDisplayName", "").takeIf { it.isNotBlank() },
                     ),
                 )
             }

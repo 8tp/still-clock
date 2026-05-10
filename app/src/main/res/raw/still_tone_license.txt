@@ -1,16 +1,57 @@
-still-clock — bundled alarm tone
+still-clock — bundled alarm tones
 
-Per spec.md §15 q1, the bundled tone is a 1.5-second self-recorded sine fade
-generated with sox so the licensing is unambiguously CC0 (no third-party samples,
-no derivative claims):
+Four tones, all self-generated with sox so the licensing is unambiguously CC0
+(no third-party samples, no derivative claims).
 
-    sox -n -r 44100 still_tone.ogg synth 1.5 sine 440 fade 0.05 1.5 0.3
+Design notes: the previous batch was deliberately subtle. After hands-on
+testing they read as gentle ambient cues, not alarms — easy to sleep through.
+This batch follows the alarm-research consensus:
 
-Drop the resulting still_tone.ogg into this directory before release.
+  - dominant pitch around C5 (523 Hz), with melodic content in 500–3000 Hz
+    (the band the sleeping brain detects most reliably)
+  - melodic/rhythmic content where possible — harsh single beeps cause
+    sleep-inertia grogginess and are easier to habituate to
+  - tempo in the 100–120 BPM range when rhythmic
+  - normalized to -0.5 dB peak so the OS volume slider is the only attenuator
 
-If still_tone.ogg is absent at runtime, AlarmFiresActivity falls back to the user-
-selected ringtone (RingtoneManager.TYPE_ALARM) and then to the system default
-alarm ringtone. If none of those resolve, the alarm-fires screen plays no tone but
-still vibrates — the spec requires the fires-Activity to come up regardless.
+Recipes (run from /tmp):
+
+  # chime — C5 → E5 → G5 → C6 arpeggio + sustained C6, light reverb tail.
+  sox -n -r 44100 -c 1 c1.wav synth 0.22 sine 523  gain -1 fade h 0.005 0.22 0.08
+  sox -n -r 44100 -c 1 c2.wav synth 0.22 sine 659  gain -1 fade h 0.005 0.22 0.08
+  sox -n -r 44100 -c 1 c3.wav synth 0.22 sine 784  gain -1 fade h 0.005 0.22 0.08
+  sox -n -r 44100 -c 1 c4.wav synth 0.22 sine 1047 gain -1 fade h 0.005 0.22 0.08
+  sox -n -r 44100 -c 1 c5.wav synth 0.7  sine 1047 gain -1 fade h 0.005 0.7  0.5
+  sox -n -r 44100 -c 1 csil.wav synth 0.25 sine 0
+  sox c1.wav c2.wav c3.wav c4.wav c5.wav csil.wav chime_seq.wav
+  sox chime_seq.wav still_chime.ogg reverb 25 50 60 norm -0.5
+
+  # pulse — three urgent 880 Hz beeps at ~120 BPM, short rest before loop.
+  sox -n -r 44100 -c 1 beep.wav   synth 0.12 sine 880 gain -1 fade h 0.003 0.12 0.02
+  sox -n -r 44100 -c 1 sshort.wav synth 0.08 sine 0
+  sox -n -r 44100 -c 1 smed.wav   synth 0.25 sine 0
+  sox beep.wav sshort.wav beep.wav sshort.wav beep.wav smed.wav pulse_seq.wav
+  sox pulse_seq.wav still_pulse.ogg norm -0.5
+
+  # bell — C5 + G5 plucked chord with long reverb, rung twice per loop.
+  sox -n -r 44100 -c 1 bell_a.wav synth 1.5 pluck C5 gain 4
+  sox -n -r 44100 -c 1 bell_b.wav synth 1.5 pluck G5 gain 4
+  sox -m bell_a.wav bell_b.wav bell_ring.wav
+  sox -n -r 44100 -c 1 bell_sil.wav synth 0.3 sine 0
+  sox bell_ring.wav bell_sil.wav bell_ring.wav bell_seq.wav
+  sox bell_seq.wav still_bell.ogg reverb 35 50 100 norm -0.5
+
+  # wood — C6 woodblock plucks, syncopated double-stop rhythm at ~120 BPM.
+  sox -n -r 44100 -c 1 wood_a.wav     synth 0.18 pluck C6 gain 5
+  sox -n -r 44100 -c 1 wood_short.wav synth 0.08 sine 0
+  sox -n -r 44100 -c 1 wood_med.wav   synth 0.4  sine 0
+  sox wood_a.wav wood_short.wav wood_a.wav wood_med.wav \
+      wood_a.wav wood_short.wav wood_a.wav wood_med.wav wood_seq.wav
+  sox wood_seq.wav still_wood.ogg norm -0.5
+
+If none of these resolve at runtime, AlarmFiresActivity falls back to the user-
+selected system ringtone (RingtoneManager.TYPE_ALARM) and then to the system
+default alarm ringtone. If none of those resolve either, the alarm-fires screen
+plays no tone but still vibrates.
 
 License: CC0 1.0 Universal (Public Domain Dedication).
