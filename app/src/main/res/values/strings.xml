@@ -1,0 +1,8 @@
+<!-- App strings. Keep names short and quiet, like the launcher and notes. -->
+<resources>
+    <string name="app_name">Still Clock</string>
+    <string name="alarm_channel_name">alarms</string>
+    <string name="alarm_channel_description">scheduled alarms, fired locally</string>
+    <string name="timer_channel_name">timer</string>
+    <string name="timer_channel_description">single countdown, fired locally</string>
+</resources>

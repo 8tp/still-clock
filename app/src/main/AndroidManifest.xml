@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android manifest for Still Clock.
+
+    Privacy posture (matches still-launcher / still-notes / still-cal):
+    - No INTERNET permission. Ever.
+    - No analytics, telemetry, or background services beyond what alarms strictly require.
+    - Alarms persist as a single JSON blob in DataStore; timer/stopwatch state in DataStore too.
+
+    Permissions (each disclosed honestly in the README):
+    - POST_NOTIFICATIONS:    Required on Android 13+ to surface alarm and timer notifications.
+                             Requested at runtime, the first time the user enables an alarm
+                             or starts a timer.
+    - SCHEDULE_EXACT_ALARM:  Required on Android 12+ for AlarmManager.setAlarmClock and the
+                             timer's setExactAndAllowWhileIdle. An alarm that fires ten
+                             minutes late is broken.
+    - RECEIVE_BOOT_COMPLETED:Reschedule pending alarms after a reboot. AlarmManager forgets
+                             everything across reboots, so without this every armed alarm dies.
+    - USE_FULL_SCREEN_INTENT:Required on Android 14+ to launch the alarm-fires Activity over
+                             the lockscreen via a high-importance notification's full-screen
+                             intent. An alarm that only shows as a notification you have to
+                             swipe down to see is broken.
+    - WAKE_LOCK:             Keep the CPU and screen alive while the alarm is ringing so the
+                             tone, vibration, and dismiss/snooze UI stay responsive.
+    - VIBRATE:               Vibrate alongside the tone — the only haptic surface in the app.
+
+    None of the six involves the network or any third-party SDK.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
+        android:icon="@drawable/ic_still_clock_launcher"
+        android:roundIcon="@drawable/ic_still_clock_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.StillClock"
+        android:usesCleartextTraffic="false">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+            The alarm-fires screen.
+
+            singleTask + empty taskAffinity isolates it from MainActivity's task so dismissing
+            the alarm doesn't dump the user into the regular UI mid-finger-press.
+
+            showWhenLocked + turnScreenOn are the modern (API 27+) replacements for the
+            FLAG_SHOW_WHEN_LOCKED / FLAG_TURN_SCREEN_ON window flags, declared here so the
+            screen can be brought up by the OS even from a cold start.
+
+            excludeFromRecents keeps a dismissed alarm from leaving a card in the recents UI.
+        -->
+        <activity
+            android:name=".alarm.AlarmFiresActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:showOnLockScreen="true"
+            android:showWhenLocked="true"
+            android:taskAffinity=""
+            android:turnScreenOn="true" />
+
+        <!-- Fires when an alarm or timer's PendingIntent triggers. Posts the high-importance
+             notification with full-screen intent and starts AlarmFiresActivity. Not exported. -->
+        <receiver
+            android:name=".alarm.AlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- Reschedules armed alarms after a reboot. -->
+        <receiver
+            android:name=".alarm.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

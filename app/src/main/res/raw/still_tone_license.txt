@@ -1,0 +1,16 @@
+still-clock — bundled alarm tone
+
+Per spec.md §15 q1, the bundled tone is a 1.5-second self-recorded sine fade
+generated with sox so the licensing is unambiguously CC0 (no third-party samples,
+no derivative claims):
+
+    sox -n -r 44100 still_tone.ogg synth 1.5 sine 440 fade 0.05 1.5 0.3
+
+Drop the resulting still_tone.ogg into this directory before release.
+
+If still_tone.ogg is absent at runtime, AlarmFiresActivity falls back to the user-
+selected ringtone (RingtoneManager.TYPE_ALARM) and then to the system default
+alarm ringtone. If none of those resolve, the alarm-fires screen plays no tone but
+still vibrates — the spec requires the fires-Activity to come up regardless.
+
+License: CC0 1.0 Universal (Public Domain Dedication).
