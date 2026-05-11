@@ -37,6 +37,19 @@ class TimerRepository internal constructor(
 
     suspend fun clear() = save(TimerState.Idle)
 
+    suspend fun consumeExpiredRunningTimer(nowMs: Long): Boolean = withContext(Dispatchers.IO) {
+        var consumed = false
+        dataStore.edit { prefs ->
+            val state = decode(prefs[TIMER_STATE_JSON_KEY])
+            val deadline = state.deadlineEpochMs ?: return@edit
+            if (deadline <= nowMs) {
+                prefs[TIMER_STATE_JSON_KEY] = encode(TimerState.Idle)
+                consumed = true
+            }
+        }
+        consumed
+    }
+
     private fun encode(state: TimerState): String {
         val o = JSONObject()
         if (state.deadlineEpochMs != null) o.put("deadlineEpochMs", state.deadlineEpochMs)

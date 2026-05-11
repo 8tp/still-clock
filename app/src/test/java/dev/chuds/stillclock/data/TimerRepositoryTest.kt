@@ -53,4 +53,38 @@ class TimerRepositoryTest {
 
         assertEquals(TimerState.Idle, TimerRepository(dataStore).snapshot())
     }
+
+    @Test
+    fun consumeExpiredRunningTimer_isSingleConsumerAcrossColdRepositories() = runBlocking {
+        val warmRepository = TimerRepository(dataStore)
+        warmRepository.save(
+            TimerState(
+                deadlineEpochMs = 1_000L,
+                totalDurationMs = 30_000L,
+                pausedRemainingMs = null,
+            ),
+        )
+
+        val first = TimerRepository(dataStore).consumeExpiredRunningTimer(nowMs = 2_000L)
+        val second = TimerRepository(dataStore).consumeExpiredRunningTimer(nowMs = 2_000L)
+
+        assertEquals(true, first)
+        assertEquals(false, second)
+        assertEquals(TimerState.Idle, TimerRepository(dataStore).snapshot())
+    }
+
+    @Test
+    fun consumeExpiredRunningTimer_leavesFutureTimerArmed() = runBlocking {
+        val state = TimerState(
+            deadlineEpochMs = 5_000L,
+            totalDurationMs = 30_000L,
+            pausedRemainingMs = null,
+        )
+        TimerRepository(dataStore).save(state)
+
+        val consumed = TimerRepository(dataStore).consumeExpiredRunningTimer(nowMs = 2_000L)
+
+        assertEquals(false, consumed)
+        assertEquals(state, TimerRepository(dataStore).snapshot())
+    }
 }

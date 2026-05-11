@@ -56,12 +56,12 @@ class TimerScheduler(private val context: Context, private val repository: Timer
             return
         }
 
+        if (!repository.consumeExpiredRunningTimer(now)) return
         val fire = Intent(context, AlarmReceiver::class.java).apply {
             action = AlarmsScheduler.ACTION_FIRE_TIMER
             putExtra(AlarmsScheduler.EXTRA_KIND, AlarmsScheduler.KIND_TIMER)
         }
         context.sendBroadcast(fire)
-        repository.clear()
     }
 
     private fun armAt(deadlineEpochMs: Long) {
