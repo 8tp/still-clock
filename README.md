@@ -50,7 +50,8 @@ Seven permissions ARE declared because they are unavoidable for a clock app whos
 | Permission | Why it's needed |
 | --- | --- |
 | `POST_NOTIFICATIONS` | Android 13+ runtime requirement to surface alarm and timer notifications. Asked the first time you enable an alarm or start a timer. |
-| `SCHEDULE_EXACT_ALARM` | Android 12+ runtime requirement for `AlarmManager.setAlarmClock` and the timer's `setExactAndAllowWhileIdle`. An alarm that fires ten minutes late is broken. |
+| `SCHEDULE_EXACT_ALARM` | Android 12 / 12L runtime requirement for `AlarmManager.setAlarmClock` and the timer's `setExactAndAllowWhileIdle`. An alarm that fires ten minutes late is broken. |
+| `USE_EXACT_ALARM` | Android 13+ exact-alarm declaration for apps whose core purpose is alarms and timers, avoiding a first-run trip through special app access settings. |
 | `RECEIVE_BOOT_COMPLETED` | `AlarmManager` forgets every armed alarm across reboots; without this every alarm dies overnight. |
 | `USE_FULL_SCREEN_INTENT` | Android 14+ requires this manifest declaration to launch the alarm-fires Activity over the lockscreen via the notification's full-screen intent. |
 | `WAKE_LOCK` | Keep the CPU and screen alive while the alarm is ringing so the tone, vibration, and dismiss/snooze UI stay responsive. |
