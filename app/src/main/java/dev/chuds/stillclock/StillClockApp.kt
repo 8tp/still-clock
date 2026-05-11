@@ -183,6 +183,8 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
     }
 
     suspend fun recoverExactAlarmSchedulesAfterGrant() {
+        // Coordinator debounces fan-out from a single grant across receiver/launcher/lifecycle.
+        if (!dev.chuds.stillclock.alarm.ExactAlarmRecoveryCoordinator.tryClaim()) return
         if (!AlarmsScheduler.canScheduleExactAlarms(context)) return
         alarmsRepository.snapshot()
             .filter { it.enabled }
@@ -204,7 +206,11 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
     drainPendingExactAlarmAction = { fromSettingsResult ->
         val pendingToken = pendingExactAlarmActionToken
         val hasPendingAction = pendingToken != null
-        if (AlarmsScheduler.canScheduleExactAlarms(context)) {
+        // Only run when there's something to drain: either an action waiting to replay,
+        // or we just returned from the system grant flow. Bare ON_RESUME entries are a no-op.
+        if (!hasPendingAction && !fromSettingsResult) {
+            // skip — nothing to do
+        } else if (AlarmsScheduler.canScheduleExactAlarms(context)) {
             val pending = pendingToken?.let(::pendingExactAlarmActionFromSaveToken)
             pendingExactAlarmActionToken = null
             exactAlarmSettingsOpen = false
@@ -229,6 +235,21 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Surface a one-time recovery prompt if a timer fired silently (POST_NOTIFICATIONS
+    // was revoked at fire time). Acknowledge by clearing the flag.
+    LaunchedEffect(Unit) {
+        preferencesRepository.silentTimerFireAt.collect { fireAt ->
+            if (fireAt != null) {
+                Toast.makeText(
+                    activityContext,
+                    "timer fired silently — enable notifications so alarms aren't missed",
+                    Toast.LENGTH_LONG,
+                ).show()
+                preferencesRepository.clearSilentTimerFire()
+            }
+        }
     }
 
     requestExactAlarmAccess = requester@ { action ->

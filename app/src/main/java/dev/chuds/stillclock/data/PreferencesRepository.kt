@@ -39,6 +39,7 @@ private val TIMER_SOUND_URI_KEY = stringPreferencesKey("pref_timer_sound_uri")
 private val TIMER_SOUND_DISPLAY_NAME_KEY = stringPreferencesKey("pref_timer_sound_display_name")
 private val SNOOZE_MINUTES_KEY = intPreferencesKey("pref_snooze_minutes")
 private val HAPTICS_ENABLED_KEY = booleanPreferencesKey("pref_haptics_enabled")
+private val SILENT_TIMER_FIRE_AT_KEY = androidx.datastore.preferences.core.longPreferencesKey("pref_silent_timer_fire_at")
 
 class PreferencesRepository(private val context: Context) {
 
@@ -98,4 +99,15 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setHapticsEnabled(value: Boolean) =
         context.stillClockDataStore.edit { it[HAPTICS_ENABLED_KEY] = value }
+
+    /** Timer fired while POST_NOTIFICATIONS was revoked — surface a one-time prompt on next app open. */
+    val silentTimerFireAt: Flow<Long?> = context.stillClockDataStore.data
+        .catch { e -> if (e is IOException) emit(emptyPreferences()) else throw e }
+        .map { prefs -> prefs[SILENT_TIMER_FIRE_AT_KEY]?.takeIf { it > 0L } }
+
+    suspend fun markSilentTimerFire(epochMs: Long) =
+        context.stillClockDataStore.edit { it[SILENT_TIMER_FIRE_AT_KEY] = epochMs }
+
+    suspend fun clearSilentTimerFire() =
+        context.stillClockDataStore.edit { it.remove(SILENT_TIMER_FIRE_AT_KEY) }
 }

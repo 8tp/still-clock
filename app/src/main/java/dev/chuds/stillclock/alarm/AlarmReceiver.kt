@@ -83,14 +83,18 @@ class AlarmReceiver : BroadcastReceiver() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val prefs = runCatching { PreferencesRepository(app).settings.first() }.getOrNull()
+                val preferencesRepo = PreferencesRepository(app)
+                val prefs = runCatching { preferencesRepo.settings.first() }.getOrNull()
                 val resolvedSoundUri = listOfNotNull(
                     prefs?.timerSoundUri?.takeIf { it.isNotBlank() },
                     BUNDLED_TONES.first().uri,
                 ).first()
 
-                postTimerNotification(app, resolvedSoundUri)
+                val notificationPosted = postTimerNotification(app, resolvedSoundUri)
                 startFiresActivity(app, "", "", soft = false, isSnooze = false, kind = AlarmsScheduler.KIND_TIMER, soundUri = resolvedSoundUri)
+                if (!notificationPosted) {
+                    runCatching { preferencesRepo.markSilentTimerFire(System.currentTimeMillis()) }
+                }
                 TimerRepository(app).clear()
             } finally {
                 pending.finish()
@@ -140,8 +144,8 @@ class AlarmReceiver : BroadcastReceiver() {
         nm.notify(NOTIF_ID_ALARM, notification)
     }
 
-    private fun postTimerNotification(context: Context, soundUri: String) {
-        if (!hasPostNotifications(context)) return
+    private fun postTimerNotification(context: Context, soundUri: String): Boolean {
+        if (!hasPostNotifications(context)) return false
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         val activityIntent = Intent(context, AlarmFiresActivity::class.java).apply {
@@ -167,7 +171,7 @@ class AlarmReceiver : BroadcastReceiver() {
             .setContentIntent(full)
             .build()
 
-        nm.notify(NOTIF_ID_TIMER, notification)
+        return runCatching { nm.notify(NOTIF_ID_TIMER, notification) }.isSuccess
     }
 
     private fun startFiresActivity(
