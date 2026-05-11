@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -31,6 +32,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.chuds.stillclock.alarm.AlarmsScheduler
 import dev.chuds.stillclock.alarm.NotificationChannels
 import dev.chuds.stillclock.alarm.TimerScheduler
@@ -105,6 +109,7 @@ private fun pendingExactAlarmActionFromSaveToken(token: String): PendingExactAla
 fun StillClockApp(initialAlarmEditId: String? = null) {
     val context = LocalContext.current.applicationContext
     val activityContext = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     val alarmsRepository = remember(context) { AlarmsRepository(context) }
     val timerRepository = remember(context) { TimerRepository(context) }
@@ -141,6 +146,7 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
 
     var actionTarget by remember { mutableStateOf<String?>(null) }
     var pendingExactAlarmActionToken by rememberSaveable { mutableStateOf<String?>(null) }
+    var exactAlarmSettingsOpen by rememberSaveable { mutableStateOf(false) }
 
     // Notification permission ask — first time we need it.
     val notificationLauncher = rememberLauncherForActivityResult(
@@ -178,22 +184,42 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
 
     lateinit var requestExactAlarmAccess: (PendingExactAlarmAction?) -> Boolean
     lateinit var runExactAlarmAction: suspend (PendingExactAlarmAction) -> Unit
+    lateinit var drainPendingExactAlarmAction: (Boolean) -> Unit
 
     val exactAlarmLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) {
+        exactAlarmSettingsOpen = false
+        drainPendingExactAlarmAction(true)
+    }
+
+    drainPendingExactAlarmAction = { fromSettingsResult ->
+        val pendingToken = pendingExactAlarmActionToken
+        val hasPendingAction = pendingToken != null
         if (AlarmsScheduler.canScheduleExactAlarms(context)) {
-            val pending = pendingExactAlarmActionToken?.let(::pendingExactAlarmActionFromSaveToken)
+            val pending = pendingToken?.let(::pendingExactAlarmActionFromSaveToken)
             pendingExactAlarmActionToken = null
+            exactAlarmSettingsOpen = false
             if (pending != null) {
                 scope.launch { runExactAlarmAction(pending) }
             } else {
                 rescheduleEnabledAlarmsAfterExactAlarmGrant()
             }
-        } else {
+        } else if (hasPendingAction && fromSettingsResult) {
             pendingExactAlarmActionToken = null
+            exactAlarmSettingsOpen = false
             Toast.makeText(activityContext, "exact alarms still disabled", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && pendingExactAlarmActionToken != null) {
+                drainPendingExactAlarmAction(exactAlarmSettingsOpen)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     requestExactAlarmAccess = requester@ { action ->
@@ -204,12 +230,15 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
                 data = Uri.parse("package:${activityContext.packageName}")
             }
             runCatching { exactAlarmLauncher.launch(intent) }
+                .onSuccess { exactAlarmSettingsOpen = true }
                 .onFailure {
                     pendingExactAlarmActionToken = null
+                    exactAlarmSettingsOpen = false
                     Toast.makeText(activityContext, "enable exact alarms in settings", Toast.LENGTH_SHORT).show()
                 }
         } else {
             pendingExactAlarmActionToken = null
+            exactAlarmSettingsOpen = false
             Toast.makeText(activityContext, "enable exact alarms in settings", Toast.LENGTH_SHORT).show()
         }
         return@requester false
