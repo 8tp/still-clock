@@ -28,7 +28,7 @@
                              tone, vibration, and dismiss/snooze UI stay responsive.
     - VIBRATE:               Vibrate alongside the tone — the only haptic surface in the app.
 
-    None of the six involves the network or any third-party SDK.
+    None of the seven involves the network or any third-party SDK.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
