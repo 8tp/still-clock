@@ -14,6 +14,7 @@ import dev.chuds.stillclock.R
 import dev.chuds.stillclock.data.AlarmsRepository
 import dev.chuds.stillclock.data.BUNDLED_TONES
 import dev.chuds.stillclock.data.PreferencesRepository
+import dev.chuds.stillclock.data.TimerRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -90,6 +91,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
                 postTimerNotification(app, resolvedSoundUri)
                 startFiresActivity(app, "", "", soft = false, isSnooze = false, kind = AlarmsScheduler.KIND_TIMER, soundUri = resolvedSoundUri)
+                TimerRepository(app).clear()
             } finally {
                 pending.finish()
             }

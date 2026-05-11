@@ -1,6 +1,8 @@
 package dev.chuds.stillclock.data
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -15,18 +17,22 @@ import org.json.JSONObject
 
 private val TIMER_STATE_JSON_KEY = stringPreferencesKey("timer_state_json")
 
-class TimerRepository(private val context: Context) {
+class TimerRepository internal constructor(
+    private val dataStore: DataStore<Preferences>,
+) {
 
-    val state: Flow<TimerState> = context.stillClockDataStore.data
+    constructor(context: Context) : this(context.stillClockDataStore)
+
+    val state: Flow<TimerState> = dataStore.data
         .catch { e -> if (e is IOException) emit(emptyPreferences()) else throw e }
         .map { prefs -> decode(prefs[TIMER_STATE_JSON_KEY]) }
 
     suspend fun snapshot(): TimerState = withContext(Dispatchers.IO) {
-        decode(context.stillClockDataStore.data.first()[TIMER_STATE_JSON_KEY])
+        decode(dataStore.data.first()[TIMER_STATE_JSON_KEY])
     }
 
     suspend fun save(state: TimerState) = withContext(Dispatchers.IO) {
-        context.stillClockDataStore.edit { it[TIMER_STATE_JSON_KEY] = encode(state) }
+        dataStore.edit { it[TIMER_STATE_JSON_KEY] = encode(state) }
     }
 
     suspend fun clear() = save(TimerState.Idle)
