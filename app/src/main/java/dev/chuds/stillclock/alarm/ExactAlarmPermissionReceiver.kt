@@ -5,8 +5,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import dev.chuds.stillclock.data.AlarmsRepository
-import dev.chuds.stillclock.data.TimerRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,14 +17,12 @@ class ExactAlarmPermissionReceiver : BroadcastReceiver() {
 
         val appContext = context.applicationContext
         if (!AlarmsScheduler.canScheduleExactAlarms(appContext)) return
+        if (!ExactAlarmRecoveryCoordinator.tryClaim()) return
 
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                AlarmsRepository(appContext).snapshot()
-                    .filter { it.enabled }
-                    .forEach { alarm -> AlarmsScheduler.schedule(appContext, alarm) }
-                TimerScheduler(appContext, TimerRepository(appContext)).recoverRunningTimer()
+                ExactAlarmRecoveryCoordinator.sweep(appContext)
             } finally {
                 pendingResult.finish()
             }
