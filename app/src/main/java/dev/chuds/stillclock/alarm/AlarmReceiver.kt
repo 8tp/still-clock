@@ -124,7 +124,7 @@ class AlarmReceiver : BroadcastReceiver() {
         )
 
         val notification = NotificationCompat.Builder(context, NotificationChannels.ALARMS)
-            .setSmallIcon(R.drawable.ic_still_clock_launcher)
+            .setSmallIcon(R.drawable.ic_still_clock_notification)
             .setContentTitle("alarm")
             .setContentText(label.ifBlank { "" })
             .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -155,7 +155,7 @@ class AlarmReceiver : BroadcastReceiver() {
         )
 
         val notification = NotificationCompat.Builder(context, NotificationChannels.TIMER)
-            .setSmallIcon(R.drawable.ic_still_clock_launcher)
+            .setSmallIcon(R.drawable.ic_still_clock_notification)
             .setContentTitle("time up")
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setPriority(NotificationCompat.PRIORITY_MAX)
