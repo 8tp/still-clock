@@ -54,13 +54,13 @@ fun AlarmEditScreen(
     onDelete: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    var hour by remember { mutableStateOf(initial.hour) }
-    var minute by remember { mutableStateOf(initial.minute) }
-    var label by remember { mutableStateOf(initial.label) }
-    var days by remember { mutableStateOf(initial.daysOfWeek) }
-    var soft by remember { mutableStateOf(initial.soft) }
-    var soundUri by remember { mutableStateOf(initial.soundUri ?: "") }
-    var soundDisplayName by remember { mutableStateOf(initial.soundDisplayName ?: "") }
+    var hour by remember(initial.id) { mutableStateOf(initial.hour) }
+    var minute by remember(initial.id) { mutableStateOf(initial.minute) }
+    var label by remember(initial.id) { mutableStateOf(initial.label) }
+    var days by remember(initial.id) { mutableStateOf(initial.daysOfWeek) }
+    var soft by remember(initial.id) { mutableStateOf(initial.soft) }
+    var soundUri by remember(initial.id) { mutableStateOf(initial.soundUri ?: "") }
+    var soundDisplayName by remember(initial.id) { mutableStateOf(initial.soundDisplayName ?: "") }
     var pickerOpen by remember { mutableStateOf(false) }
     var soundPickerOpen by remember { mutableStateOf(false) }
 

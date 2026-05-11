@@ -51,8 +51,6 @@ import dev.chuds.stillclock.ui.stopwatch.StopwatchScreen
 import dev.chuds.stillclock.ui.theme.LocalStillTypography
 import dev.chuds.stillclock.ui.theme.stillTypographyFor
 import dev.chuds.stillclock.ui.timer.TimerScreen
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 private sealed interface Route {
@@ -77,14 +75,8 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
         NotificationChannels.ensure(context)
     }
 
-    val settingsFlow = remember(preferencesRepository) {
-        preferencesRepository.settings.stateIn(
-            scope = scope,
-            started = SharingStarted.Eagerly,
-            initialValue = ClockSettings(),
-        )
-    }
-    val settings by settingsFlow.collectAsState()
+    val loadedSettings by preferencesRepository.settings.collectAsState(initial = null)
+    val settings = loadedSettings ?: ClockSettings()
 
     val alarms by alarmsRepository.alarmsFlow.collectAsState(initial = emptyList())
     val timerState by timerRepository.state.collectAsState(initial = TimerState.Idle)
@@ -98,9 +90,9 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
     }
     // Once settings loads (async), respect default tab on cold start.
     var initialTabApplied by remember { mutableStateOf(false) }
-    LaunchedEffect(settings.defaultTab) {
-        if (!initialTabApplied && initialAlarmEditId == null) {
-            route = Route.Tabs(settings.defaultTab)
+    LaunchedEffect(loadedSettings?.defaultTab) {
+        if (!initialTabApplied && initialAlarmEditId == null && loadedSettings != null) {
+            route = Route.Tabs(loadedSettings!!.defaultTab)
             initialTabApplied = true
         }
     }
@@ -201,8 +193,20 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
                     )
 
                     is Route.AlarmEdit -> {
-                        val initial = remember(current.id, alarms) {
-                            alarms.firstOrNull { it.id == current.id } ?: Alarm(
+                        val targetAlarm = remember(current.id, alarms) {
+                            current.id?.let { id -> alarms.firstOrNull { it.id == id } }
+                        }
+                        if (current.id != null && targetAlarm == null) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(dev.chuds.stillclock.ui.theme.StillColors.OledBlack),
+                            )
+                            return@AnimatedContent
+                        }
+
+                        val initial = targetAlarm ?: remember(current.id) {
+                            Alarm(
                                 id = AlarmsRepository.newId(),
                                 hour = 7,
                                 minute = 0,
