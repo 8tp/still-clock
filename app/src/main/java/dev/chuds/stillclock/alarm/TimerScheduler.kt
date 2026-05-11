@@ -35,22 +35,15 @@ class TimerScheduler(private val context: Context, private val repository: Timer
     }
 
     suspend fun pause() {
-        val state = repository.snapshot()
-        if (!state.isRunning) return
-        val remaining = state.remainingMs(
+        val paused = repository.pauseIfRunning(
             nowEpochMs = System.currentTimeMillis(),
             nowElapsedRealtimeMs = SystemClock.elapsedRealtime(),
             currentBootCount = currentBootCount(),
         )
-        cancelArm()
-        repository.save(
-            state.copy(
-                deadlineEpochMs = null,
-                deadlineElapsedRealtimeMs = null,
-                pausedRemainingMs = remaining,
-                startedBootCount = null,
-            ),
-        )
+        // Cancel the AlarmManager arm only when we committed the paused state. If the timer
+        // already fired (AlarmReceiver cleared it inside the same DataStore boundary),
+        // pauseIfRunning returns false and we leave the cleared state alone.
+        if (paused) cancelArm()
     }
 
     suspend fun resume(): Boolean {
@@ -94,24 +87,41 @@ class TimerScheduler(private val context: Context, private val repository: Timer
             return
         }
 
-        val remainingFromWall = deadline - nowEpoch
-        if (remainingFromWall > 0L) {
-            if (canArmExact()) {
-                val refreshed = state.copy(
-                    deadlineElapsedRealtimeMs = nowElapsed + remainingFromWall,
-                    startedBootCount = bootCount,
-                )
-                repository.save(refreshed)
-                armAtElapsed(nowElapsed + remainingFromWall)
+        when (val decision = AlarmScheduling.wallFallbackDecision(
+            deadlineEpochMs = deadline,
+            nowEpochMs = nowEpoch,
+            totalDurationMs = state.totalDurationMs,
+        )) {
+            AlarmScheduling.WallFallbackDecision.FireNow -> forceFire()
+            is AlarmScheduling.WallFallbackDecision.Reschedule -> {
+                if (canArmExact()) {
+                    val refreshed = state.copy(
+                        deadlineElapsedRealtimeMs = nowElapsed + decision.remainingMs,
+                        startedBootCount = bootCount,
+                    )
+                    repository.save(refreshed)
+                    armAtElapsed(nowElapsed + decision.remainingMs)
+                }
             }
-            return
+            AlarmScheduling.WallFallbackDecision.Expired -> fireIfConsumed(nowEpoch, nowElapsed, bootCount)
         }
-
-        fireIfConsumed(nowEpoch, nowElapsed, bootCount)
     }
 
     private suspend fun fireIfConsumed(nowEpoch: Long, nowElapsed: Long, bootCount: Int?) {
         if (!repository.consumeExpiredRunningTimer(nowEpoch, nowElapsed, bootCount)) return
+        broadcastFire()
+    }
+
+    /**
+     * Force-fire bypasses isExpired() — used when the wall clock has moved backward enough
+     * that the persisted deadlineEpochMs would otherwise read as still in the future.
+     */
+    private suspend fun forceFire() {
+        repository.clear()
+        broadcastFire()
+    }
+
+    private fun broadcastFire() {
         val fire = Intent(context, AlarmReceiver::class.java).apply {
             action = AlarmsScheduler.ACTION_FIRE_TIMER
             putExtra(AlarmsScheduler.EXTRA_KIND, AlarmsScheduler.KIND_TIMER)

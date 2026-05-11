@@ -151,6 +151,65 @@ class AlarmSchedulingTest {
     }
 
     @Test
+    fun wallFallback_normalFuture_reschedules() {
+        val decision = AlarmScheduling.wallFallbackDecision(
+            deadlineEpochMs = 1_000_000L,
+            nowEpochMs = 1_000L,
+            totalDurationMs = 5_000_000L,
+        )
+        assertEquals(AlarmScheduling.WallFallbackDecision.Reschedule(999_000L), decision)
+    }
+
+    @Test
+    fun wallFallback_pastDeadline_isExpired() {
+        val decision = AlarmScheduling.wallFallbackDecision(
+            deadlineEpochMs = 500L,
+            nowEpochMs = 1_000L,
+            totalDurationMs = 30_000L,
+        )
+        assertEquals(AlarmScheduling.WallFallbackDecision.Expired, decision)
+    }
+
+    @Test
+    fun wallFallback_wallClockRewoundBeyondTotalDuration_firesNow() {
+        // User set a 30s timer. Reboot; wall clock has been rewound an hour. The naive
+        // deadline - now reads 1h05s — far longer than the user ever asked for. We must
+        // fire now rather than wait an absurd duration.
+        val totalDurationMs = 30_000L
+        val deadline = 3_600_000L + 30_000L
+        val now = 0L
+        val decision = AlarmScheduling.wallFallbackDecision(
+            deadlineEpochMs = deadline,
+            nowEpochMs = now,
+            totalDurationMs = totalDurationMs,
+        )
+        assertEquals(AlarmScheduling.WallFallbackDecision.FireNow, decision)
+    }
+
+    @Test
+    fun wallFallback_exactlyAtTotalDuration_reschedules() {
+        // Boundary: remaining == total. Honor the original deadline, don't fire-now.
+        val decision = AlarmScheduling.wallFallbackDecision(
+            deadlineEpochMs = 30_000L,
+            nowEpochMs = 0L,
+            totalDurationMs = 30_000L,
+        )
+        assertEquals(AlarmScheduling.WallFallbackDecision.Reschedule(30_000L), decision)
+    }
+
+    @Test
+    fun wallFallback_unknownTotalDuration_reschedulesRaw() {
+        // Older persisted state may not record totalDurationMs. Don't clamp in that case;
+        // the wall fallback was the previous behavior and is still safer than blocking.
+        val decision = AlarmScheduling.wallFallbackDecision(
+            deadlineEpochMs = 999_999_999L,
+            nowEpochMs = 0L,
+            totalDurationMs = 0L,
+        )
+        assertEquals(AlarmScheduling.WallFallbackDecision.Reschedule(999_999_999L), decision)
+    }
+
+    @Test
     fun requestCode_isStableAndNonNegative() {
         val code = AlarmScheduling.requestCodeFor("abc-123")
         assertEquals(code, AlarmScheduling.requestCodeFor("abc-123"))

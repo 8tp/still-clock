@@ -79,6 +79,33 @@ object AlarmScheduling {
 
     fun timerRequestCode(): Int = 0x0F1E2D3C
 
+    /**
+     * Pure decision for the wall-clock fallback path in TimerScheduler.recoverRunningTimer.
+     * Returns the action to take given the persisted deadline, the user-configured total
+     * duration, and the current wall-clock time.
+     *
+     * Why this matters: if the wall clock moved backward between timer start and reboot
+     * (NTP correction, manual change, DST fall-back when totalDurationMs > 1h),
+     * `deadline - now` can be far larger than the user ever asked for. The timer must
+     * fire-now rather than reschedule for far in the future.
+     */
+    sealed interface WallFallbackDecision {
+        data object FireNow : WallFallbackDecision
+        data class Reschedule(val remainingMs: Long) : WallFallbackDecision
+        data object Expired : WallFallbackDecision
+    }
+
+    fun wallFallbackDecision(
+        deadlineEpochMs: Long,
+        nowEpochMs: Long,
+        totalDurationMs: Long,
+    ): WallFallbackDecision {
+        val raw = deadlineEpochMs - nowEpochMs
+        if (totalDurationMs > 0L && raw > totalDurationMs) return WallFallbackDecision.FireNow
+        if (raw > 0L) return WallFallbackDecision.Reschedule(raw)
+        return WallFallbackDecision.Expired
+    }
+
     /** Lowercase day-letter row, e.g. "s m t w t f s" with selected days uppercase. */
     fun daysOfWeekLine(selected: Set<DayOfWeek>): String {
         val all = listOf(
