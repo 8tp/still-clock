@@ -4,6 +4,8 @@
 
 #### A quiet clock, alarms, timer, and stopwatch for Android.
 
+part of the [still](../STILL.md) family. the pact governs every line of code in this repo.
+
 <br>
 
 <img src="docs/screenshots/clock.png" width="180" alt="Clock tab — large serif live time, lowercase weekday and date below">&nbsp;<img src="docs/screenshots/alarms.png" width="180" alt="Alarms tab — serif times, sans labels, mono day-of-week row, text on/off toggle">&nbsp;<img src="docs/screenshots/timer.png" width="180" alt="Timer tab — duration chips, type-your-own field, and lowercase verbs">&nbsp;<img src="docs/screenshots/stopwatch.png" width="180" alt="Stopwatch tab — serif HH:MM:SS.cc readout with start, lap, reset">
