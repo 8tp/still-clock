@@ -4,6 +4,8 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.SystemClock
+import android.provider.Settings
 import android.util.Log
 import dev.chuds.stillclock.data.TimerRepository
 import dev.chuds.stillclock.data.TimerState
@@ -14,31 +16,59 @@ import dev.chuds.stillclock.data.TimerState
 class TimerScheduler(private val context: Context, private val repository: TimerRepository) {
 
     suspend fun start(durationMs: Long): Boolean {
-        val now = System.currentTimeMillis()
-        val deadline = now + durationMs.coerceAtLeast(0L)
+        val duration = durationMs.coerceAtLeast(0L)
+        val nowEpoch = System.currentTimeMillis()
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val bootCount = currentBootCount()
         if (!canArmExact()) return false
-        repository.save(TimerState(deadlineEpochMs = deadline, totalDurationMs = durationMs, pausedRemainingMs = null))
-        armAt(deadline)
+        repository.save(
+            TimerState(
+                deadlineEpochMs = nowEpoch + duration,
+                deadlineElapsedRealtimeMs = nowElapsed + duration,
+                totalDurationMs = duration,
+                pausedRemainingMs = null,
+                startedBootCount = bootCount,
+            ),
+        )
+        armAtElapsed(nowElapsed + duration)
         return true
     }
 
     suspend fun pause() {
         val state = repository.snapshot()
         if (!state.isRunning) return
-        val now = System.currentTimeMillis()
-        val remaining = ((state.deadlineEpochMs ?: now) - now).coerceAtLeast(0L)
+        val remaining = state.remainingMs(
+            nowEpochMs = System.currentTimeMillis(),
+            nowElapsedRealtimeMs = SystemClock.elapsedRealtime(),
+            currentBootCount = currentBootCount(),
+        )
         cancelArm()
-        repository.save(state.copy(deadlineEpochMs = null, pausedRemainingMs = remaining))
+        repository.save(
+            state.copy(
+                deadlineEpochMs = null,
+                deadlineElapsedRealtimeMs = null,
+                pausedRemainingMs = remaining,
+                startedBootCount = null,
+            ),
+        )
     }
 
     suspend fun resume(): Boolean {
         val state = repository.snapshot()
-        val remaining = state.pausedRemainingMs ?: return false
-        val now = System.currentTimeMillis()
-        val deadline = now + remaining
+        val remaining = (state.pausedRemainingMs ?: return false).coerceAtLeast(0L)
+        val nowEpoch = System.currentTimeMillis()
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val bootCount = currentBootCount()
         if (!canArmExact()) return false
-        repository.save(state.copy(deadlineEpochMs = deadline, pausedRemainingMs = null))
-        armAt(deadline)
+        repository.save(
+            state.copy(
+                deadlineEpochMs = nowEpoch + remaining,
+                deadlineElapsedRealtimeMs = nowElapsed + remaining,
+                pausedRemainingMs = null,
+                startedBootCount = bootCount,
+            ),
+        )
+        armAtElapsed(nowElapsed + remaining)
         return true
     }
 
@@ -50,13 +80,38 @@ class TimerScheduler(private val context: Context, private val repository: Timer
     suspend fun recoverRunningTimer() {
         val state = repository.snapshot()
         val deadline = state.deadlineEpochMs ?: return
-        val now = System.currentTimeMillis()
-        if (deadline > now) {
-            if (canArmExact()) armAt(deadline)
+        val nowEpoch = System.currentTimeMillis()
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val bootCount = currentBootCount()
+        val elapsedDeadline = state.deadlineElapsedRealtimeMs
+
+        if (state.canUseElapsedRealtime(bootCount) && elapsedDeadline != null) {
+            if (elapsedDeadline > nowElapsed) {
+                if (canArmExact()) armAtElapsed(elapsedDeadline)
+                return
+            }
+            fireIfConsumed(nowEpoch, nowElapsed, bootCount)
             return
         }
 
-        if (!repository.consumeExpiredRunningTimer(now)) return
+        val remainingFromWall = deadline - nowEpoch
+        if (remainingFromWall > 0L) {
+            if (canArmExact()) {
+                val refreshed = state.copy(
+                    deadlineElapsedRealtimeMs = nowElapsed + remainingFromWall,
+                    startedBootCount = bootCount,
+                )
+                repository.save(refreshed)
+                armAtElapsed(nowElapsed + remainingFromWall)
+            }
+            return
+        }
+
+        fireIfConsumed(nowEpoch, nowElapsed, bootCount)
+    }
+
+    private suspend fun fireIfConsumed(nowEpoch: Long, nowElapsed: Long, bootCount: Int?) {
+        if (!repository.consumeExpiredRunningTimer(nowEpoch, nowElapsed, bootCount)) return
         val fire = Intent(context, AlarmReceiver::class.java).apply {
             action = AlarmsScheduler.ACTION_FIRE_TIMER
             putExtra(AlarmsScheduler.EXTRA_KIND, AlarmsScheduler.KIND_TIMER)
@@ -64,7 +119,7 @@ class TimerScheduler(private val context: Context, private val repository: Timer
         context.sendBroadcast(fire)
     }
 
-    private fun armAt(deadlineEpochMs: Long) {
+    private fun armAtElapsed(deadlineElapsedRealtimeMs: Long) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val pi = PendingIntent.getBroadcast(
             context,
@@ -75,7 +130,7 @@ class TimerScheduler(private val context: Context, private val repository: Timer
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, deadlineEpochMs, pi)
+        am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, deadlineElapsedRealtimeMs, pi)
     }
 
     private fun canArmExact(): Boolean {
@@ -99,4 +154,7 @@ class TimerScheduler(private val context: Context, private val repository: Timer
             pi.cancel()
         }
     }
+
+    private fun currentBootCount(): Int? =
+        runCatching { Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT) }.getOrNull()
 }

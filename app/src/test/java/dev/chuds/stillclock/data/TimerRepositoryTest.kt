@@ -77,14 +77,62 @@ class TimerRepositoryTest {
     fun consumeExpiredRunningTimer_leavesFutureTimerArmed() = runBlocking {
         val state = TimerState(
             deadlineEpochMs = 5_000L,
+            deadlineElapsedRealtimeMs = 7_000L,
             totalDurationMs = 30_000L,
             pausedRemainingMs = null,
+            startedBootCount = 42,
         )
         TimerRepository(dataStore).save(state)
 
-        val consumed = TimerRepository(dataStore).consumeExpiredRunningTimer(nowMs = 2_000L)
+        val consumed = TimerRepository(dataStore).consumeExpiredRunningTimer(
+            nowMs = 2_000L,
+            nowElapsedRealtimeMs = 3_000L,
+            currentBootCount = 42,
+        )
 
         assertEquals(false, consumed)
         assertEquals(state, TimerRepository(dataStore).snapshot())
+    }
+
+    @Test
+    fun consumeExpiredRunningTimer_usesElapsedRealtimeOnSameBoot() = runBlocking {
+        TimerRepository(dataStore).save(
+            TimerState(
+                deadlineEpochMs = 100_000L,
+                deadlineElapsedRealtimeMs = 5_000L,
+                totalDurationMs = 30_000L,
+                pausedRemainingMs = null,
+                startedBootCount = 42,
+            ),
+        )
+
+        val consumed = TimerRepository(dataStore).consumeExpiredRunningTimer(
+            nowMs = 2_000L,
+            nowElapsedRealtimeMs = 6_000L,
+            currentBootCount = 42,
+        )
+
+        assertEquals(true, consumed)
+        assertEquals(TimerState.Idle, TimerRepository(dataStore).snapshot())
+    }
+
+    @Test
+    fun runningTimerRemainingFallsBackToWallClockAcrossBoots() {
+        val state = TimerState(
+            deadlineEpochMs = 30_000L,
+            deadlineElapsedRealtimeMs = 5_000L,
+            totalDurationMs = 30_000L,
+            pausedRemainingMs = null,
+            startedBootCount = 41,
+        )
+
+        assertEquals(
+            20_000L,
+            state.remainingMs(
+                nowEpochMs = 10_000L,
+                nowElapsedRealtimeMs = 6_000L,
+                currentBootCount = 42,
+            ),
+        )
     }
 }

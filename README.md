@@ -91,7 +91,7 @@ MainActivity
         └── ui/components/                 StillDivider, StillTabBar, StillMenuItem, StillToggle, StillNumberPicker
 ```
 
-Kotlin, Jetpack Compose, AGP 9.2.1, Gradle Kotlin DSL. Everything lives in a single DataStore-Preferences file (`stillclock.preferences_pb`) — alarm list, timer state, stopwatch state, all settings. Navigation Compose is intentionally avoided; a small sealed-class `Route` lives in `StillClockApp.kt`. Alarm scheduling is `AlarmManager.setAlarmClock` (the OS's user-facing alarm slot, which paints the status-bar alarm icon and survives Doze). Timer is `setExactAndAllowWhileIdle`. The alarm-fires Activity is launched two ways: directly from the receiver (preferred) and via the high-importance notification's full-screen intent (the fallback Android 14+ requires).
+Kotlin, Jetpack Compose, AGP 9.2.1, Gradle Kotlin DSL. Everything lives in a single DataStore-Preferences file (`stillclock.preferences_pb`) — alarm list, timer state, stopwatch state, all settings. Navigation Compose is intentionally avoided; a small sealed-class `Route` lives in `StillClockApp.kt`. Alarm scheduling is `AlarmManager.setAlarmClock` (the OS's user-facing alarm slot, which paints the status-bar alarm icon and survives Doze). Timer scheduling is `setExactAndAllowWhileIdle(ELAPSED_REALTIME_WAKEUP)`, with the wall-clock deadline kept only as a reboot recovery fallback. The alarm-fires Activity is launched two ways: directly from the receiver (preferred) and via the high-importance notification's full-screen intent (the fallback Android 14+ requires).
 
 ## Gestures
 
