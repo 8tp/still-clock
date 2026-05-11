@@ -29,13 +29,13 @@ object AlarmScheduling {
             return candidatesFor(today.plusDays(1), targetTime, zone).first()
         }
 
-        // Recurring: find soonest day-of-week match in [today, today+7].
+        // Recurring alarms fire once per matching local date. On fall-back days, use
+        // the first valid occurrence and skip the second repeated wall-clock time.
         for (offset in 0..7) {
             val date: LocalDate = today.plusDays(offset.toLong())
             if (date.dayOfWeek !in alarm.daysOfWeek) continue
-            for (candidate in candidatesFor(date, targetTime, zone)) {
-                if (candidate.isAfter(now)) return candidate
-            }
+            val candidate = candidatesFor(date, targetTime, zone).first()
+            if (candidate.isAfter(now)) return candidate
         }
         // Should not reach: with non-empty days the loop always returns within 7 iterations.
         return candidatesFor(today.plusDays(7), targetTime, zone).first()

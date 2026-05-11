@@ -135,6 +135,22 @@ class AlarmSchedulingTest {
     }
 
     @Test
+    fun recurring_dstFallBack_secondOccurrenceIsSkippedAfterFirstHasPassed() {
+        val newYork = ZoneId.of("America/New_York")
+        val now = ZonedDateTime.ofLocal(
+            LocalDateTime.of(2026, 11, 1, 1, 15),
+            newYork,
+            ZoneOffset.ofHours(-5),
+        )
+        val alarm = make(hour = 1, minute = 30, days = setOf(DayOfWeek.SUNDAY))
+
+        val next = AlarmScheduling.nextFire(alarm, now, newYork)
+
+        assertEquals(LocalDate.of(2026, 11, 8), next.toLocalDate())
+        assertEquals(LocalDateTime.of(2026, 11, 8, 1, 30), next.toLocalDateTime())
+    }
+
+    @Test
     fun requestCode_isStableAndNonNegative() {
         val code = AlarmScheduling.requestCodeFor("abc-123")
         assertEquals(code, AlarmScheduling.requestCodeFor("abc-123"))
