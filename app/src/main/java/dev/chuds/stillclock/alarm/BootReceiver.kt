@@ -31,23 +31,7 @@ class BootReceiver : BroadcastReceiver() {
                     AlarmsScheduler.schedule(app, alarm)
                 }
 
-                val timerRepo = TimerRepository(app)
-                val timer = timerRepo.snapshot()
-                if (timer.deadlineEpochMs != null) {
-                    val now = System.currentTimeMillis()
-                    if (timer.deadlineEpochMs > now) {
-                        TimerScheduler(app, timerRepo).start(timer.deadlineEpochMs - now)
-                    } else {
-                        // Deadline already passed during the boot window — fire immediately,
-                        // then clear so the timer tab returns to idle.
-                        val fire = Intent(app, AlarmReceiver::class.java).apply {
-                            this.action = AlarmsScheduler.ACTION_FIRE_TIMER
-                            this.putExtra(AlarmsScheduler.EXTRA_KIND, AlarmsScheduler.KIND_TIMER)
-                        }
-                        app.sendBroadcast(fire)
-                        timerRepo.clear()
-                    }
-                }
+                TimerScheduler(app, TimerRepository(app)).recoverRunningTimer()
             } finally {
                 pending.finish()
             }

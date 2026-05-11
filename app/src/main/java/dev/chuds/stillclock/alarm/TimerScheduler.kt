@@ -47,6 +47,23 @@ class TimerScheduler(private val context: Context, private val repository: Timer
         repository.clear()
     }
 
+    suspend fun recoverRunningTimer() {
+        val state = repository.snapshot()
+        val deadline = state.deadlineEpochMs ?: return
+        val now = System.currentTimeMillis()
+        if (deadline > now) {
+            if (canArmExact()) armAt(deadline)
+            return
+        }
+
+        val fire = Intent(context, AlarmReceiver::class.java).apply {
+            action = AlarmsScheduler.ACTION_FIRE_TIMER
+            putExtra(AlarmsScheduler.EXTRA_KIND, AlarmsScheduler.KIND_TIMER)
+        }
+        context.sendBroadcast(fire)
+        repository.clear()
+    }
+
     private fun armAt(deadlineEpochMs: Long) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val pi = PendingIntent.getBroadcast(

@@ -173,13 +173,12 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
         }
     }
 
-    fun rescheduleEnabledAlarmsAfterExactAlarmGrant() {
+    suspend fun recoverExactAlarmSchedulesAfterGrant() {
         if (!AlarmsScheduler.canScheduleExactAlarms(context)) return
-        scope.launch {
-            alarmsRepository.snapshot()
-                .filter { it.enabled }
-                .forEach { alarm -> AlarmsScheduler.schedule(context, alarm) }
-        }
+        alarmsRepository.snapshot()
+            .filter { it.enabled }
+            .forEach { alarm -> AlarmsScheduler.schedule(context, alarm) }
+        timerScheduler.recoverRunningTimer()
     }
 
     lateinit var requestExactAlarmAccess: (PendingExactAlarmAction?) -> Boolean
@@ -200,10 +199,11 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
             val pending = pendingToken?.let(::pendingExactAlarmActionFromSaveToken)
             pendingExactAlarmActionToken = null
             exactAlarmSettingsOpen = false
-            if (pending != null) {
-                scope.launch { runExactAlarmAction(pending) }
-            } else {
-                rescheduleEnabledAlarmsAfterExactAlarmGrant()
+            scope.launch {
+                recoverExactAlarmSchedulesAfterGrant()
+                if (pending != null) {
+                    runExactAlarmAction(pending)
+                }
             }
         } else if (hasPendingAction && fromSettingsResult) {
             pendingExactAlarmActionToken = null
