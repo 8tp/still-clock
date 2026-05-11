@@ -11,13 +11,13 @@ import kotlinx.coroutines.launch
 
 /**
  * AlarmManager forgets every armed alarm across reboots. This receiver re-arms them on
- * BOOT_COMPLETED and LOCKED_BOOT_COMPLETED.
+ * BOOT_COMPLETED after credential-protected app storage is available.
  */
 class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action ?: return
-        if (action != Intent.ACTION_BOOT_COMPLETED && action != Intent.ACTION_LOCKED_BOOT_COMPLETED) return
+        if (action != Intent.ACTION_BOOT_COMPLETED) return
 
         NotificationChannels.ensure(context)
         val pending = goAsync()

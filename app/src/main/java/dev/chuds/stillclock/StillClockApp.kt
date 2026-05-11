@@ -2,6 +2,7 @@
 package dev.chuds.stillclock
 
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -146,7 +147,12 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
                         onToggleEnabled = { id ->
                             scope.launch {
                                 ensureNotificationPermission()
-                                val updated = alarmsRepository.setEnabled(id, !(alarms.firstOrNull { it.id == id }?.enabled ?: false))
+                                val nextEnabled = !(alarms.firstOrNull { it.id == id }?.enabled ?: false)
+                                if (nextEnabled && !AlarmsScheduler.canScheduleExactAlarms(activityContext)) {
+                                    Toast.makeText(activityContext, "enable exact alarms in settings", Toast.LENGTH_SHORT).show()
+                                    return@launch
+                                }
+                                val updated = alarmsRepository.setEnabled(id, nextEnabled)
                                 if (updated != null) {
                                     if (updated.enabled) AlarmsScheduler.schedule(activityContext, updated)
                                     else AlarmsScheduler.cancel(activityContext, id)
@@ -157,11 +163,19 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
                         onStartTimer = { ms ->
                             scope.launch {
                                 ensureNotificationPermission()
-                                timerScheduler.start(ms)
+                                if (!timerScheduler.start(ms)) {
+                                    Toast.makeText(activityContext, "enable exact alarms in settings", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         },
                         onPauseTimer = { scope.launch { timerScheduler.pause() } },
-                        onResumeTimer = { scope.launch { timerScheduler.resume() } },
+                        onResumeTimer = {
+                            scope.launch {
+                                if (!timerScheduler.resume()) {
+                                    Toast.makeText(activityContext, "enable exact alarms in settings", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
                         onCancelTimer = { scope.launch { timerScheduler.cancel() } },
                         onDismissTimer = { scope.launch { timerScheduler.cancel() } },
                         onStopwatchStartStop = {
@@ -224,6 +238,10 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
                             onSave = { updated ->
                                 scope.launch {
                                     ensureNotificationPermission()
+                                    if (updated.enabled && !AlarmsScheduler.canScheduleExactAlarms(activityContext)) {
+                                        Toast.makeText(activityContext, "enable exact alarms in settings", Toast.LENGTH_SHORT).show()
+                                        return@launch
+                                    }
                                     alarmsRepository.upsert(updated)
                                     AlarmsScheduler.schedule(activityContext, updated)
                                     route = Route.Tabs(Tab.Alarms)
