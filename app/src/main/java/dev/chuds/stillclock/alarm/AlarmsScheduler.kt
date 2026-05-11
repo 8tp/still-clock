@@ -59,8 +59,13 @@ object AlarmsScheduler {
         }
     }
 
-    fun scheduleSnooze(context: Context, alarmId: String, triggerMs: Long) {
+    /** Returns true if the snooze was actually armed. False means exact-alarm permission is missing. */
+    fun scheduleSnooze(context: Context, alarmId: String, triggerMs: Long): Boolean {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        if (!canScheduleExactAlarms(context)) {
+            Log.w(TAG, "exact-alarm permission missing; snooze for $alarmId will not arm")
+            return false
+        }
         val intent = Intent(context, AlarmReceiver::class.java).apply {
             action = ACTION_FIRE_ALARM
             putExtra(EXTRA_ALARM_ID, alarmId)
@@ -72,11 +77,8 @@ object AlarmsScheduler {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        if (!canScheduleExactAlarms(context)) {
-            Log.w(TAG, "exact-alarm permission missing; snooze for $alarmId will not arm")
-            return
-        }
         am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi)
+        return true
     }
 
     fun cancelSnooze(context: Context, alarmId: String) {

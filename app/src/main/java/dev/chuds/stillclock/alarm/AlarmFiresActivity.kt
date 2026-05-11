@@ -165,7 +165,17 @@ class AlarmFiresActivity : ComponentActivity() {
     private fun handleSnooze(alarmId: String, kind: String, snoozeMinutes: Int) {
         if (kind == AlarmsScheduler.KIND_ALARM && alarmId.isNotEmpty()) {
             val triggerMs = System.currentTimeMillis() + snoozeMinutes.coerceAtLeast(1) * 60_000L
-            AlarmsScheduler.scheduleSnooze(this, alarmId, triggerMs)
+            val armed = AlarmsScheduler.scheduleSnooze(this, alarmId, triggerMs)
+            if (!armed) {
+                android.widget.Toast.makeText(
+                    this,
+                    "snooze unavailable — grant exact alarm",
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+                // Don't dismiss: keep the alarm ringing so the user has another chance
+                // to act after seeing the toast.
+                return
+            }
         }
         finishAndQuiet()
     }
