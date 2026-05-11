@@ -5,6 +5,7 @@ import dev.chuds.stillclock.data.Alarm
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
@@ -16,27 +17,40 @@ object AlarmScheduling {
      */
     fun nextFire(alarm: Alarm, now: ZonedDateTime, zone: ZoneId = now.zone): ZonedDateTime {
         val today = now.toLocalDate()
-        val candidateToday = ZonedDateTime.of(
-            LocalDateTime.of(today, java.time.LocalTime.of(alarm.hour, alarm.minute)),
-            zone,
-        )
+        val targetTime = LocalTime.of(alarm.hour, alarm.minute)
 
         if (alarm.daysOfWeek.isEmpty()) {
-            return if (candidateToday.isAfter(now)) candidateToday else candidateToday.plusDays(1)
+            for (offset in 0..1) {
+                val date = today.plusDays(offset.toLong())
+                for (candidate in candidatesFor(date, targetTime, zone)) {
+                    if (candidate.isAfter(now)) return candidate
+                }
+            }
+            return candidatesFor(today.plusDays(1), targetTime, zone).first()
         }
 
         // Recurring: find soonest day-of-week match in [today, today+7].
         for (offset in 0..7) {
             val date: LocalDate = today.plusDays(offset.toLong())
             if (date.dayOfWeek !in alarm.daysOfWeek) continue
-            val candidate = ZonedDateTime.of(
-                LocalDateTime.of(date, java.time.LocalTime.of(alarm.hour, alarm.minute)),
-                zone,
-            )
-            if (candidate.isAfter(now)) return candidate
+            for (candidate in candidatesFor(date, targetTime, zone)) {
+                if (candidate.isAfter(now)) return candidate
+            }
         }
         // Should not reach: with non-empty days the loop always returns within 7 iterations.
-        return candidateToday.plusDays(7)
+        return candidatesFor(today.plusDays(7), targetTime, zone).first()
+    }
+
+    private fun candidatesFor(date: LocalDate, time: LocalTime, zone: ZoneId): List<ZonedDateTime> {
+        val local = LocalDateTime.of(date, time)
+        val offsets = zone.rules.getValidOffsets(local)
+        return if (offsets.isEmpty()) {
+            // DST spring-forward gap: java.time resolves to the first valid local time after the gap.
+            listOf(ZonedDateTime.of(local, zone))
+        } else {
+            offsets.map { offset -> ZonedDateTime.ofLocal(local, zone, offset) }
+                .sortedBy { it.toInstant() }
+        }
     }
 
     /** Snooze offset N minutes from [now]. */

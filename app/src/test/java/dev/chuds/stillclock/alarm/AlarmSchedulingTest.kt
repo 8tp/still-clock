@@ -2,8 +2,10 @@ package dev.chuds.stillclock.alarm
 
 import dev.chuds.stillclock.data.Alarm
 import java.time.DayOfWeek
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -70,6 +72,66 @@ class AlarmSchedulingTest {
         assertTrue(mid > 0.49f && mid < 0.51f)
         assertEquals(1f, AlarmScheduling.softRampCoefficient(120), 1e-6f)
         assertEquals(1f, AlarmScheduling.softRampCoefficient(200), 1e-6f) // capped
+    }
+
+    @Test
+    fun softRamp_sequenceIsMonotonicAndClamped() {
+        val sequence = (0..120).map { AlarmScheduling.softRampCoefficient(it) }
+
+        assertEquals(121, sequence.size)
+        assertEquals(0f, sequence.first(), 1e-6f)
+        assertEquals(0.25f, sequence[30], 1e-6f)
+        assertEquals(0.5f, sequence[60], 1e-6f)
+        assertEquals(0.75f, sequence[90], 1e-6f)
+        assertEquals(1f, sequence.last(), 1e-6f)
+        assertEquals(0f, AlarmScheduling.softRampCoefficient(-5), 1e-6f)
+        assertEquals(1f, AlarmScheduling.softRampCoefficient(121), 1e-6f)
+
+        sequence.zipWithNext().forEach { (previous, current) ->
+            assertTrue("soft ramp must not step backward", current >= previous)
+        }
+    }
+
+    @Test
+    fun dstSpringForward_nonexistentWallTimeMovesToNextValidTime() {
+        val newYork = ZoneId.of("America/New_York")
+        val now = ZonedDateTime.of(LocalDateTime.of(2026, 3, 8, 0, 30), newYork)
+        val alarm = make(hour = 2, minute = 30, days = emptySet())
+
+        val next = AlarmScheduling.nextFire(alarm, now, newYork)
+
+        assertEquals(LocalDate.of(2026, 3, 8), next.toLocalDate())
+        assertEquals(3, next.hour)
+        assertEquals(30, next.minute)
+        assertEquals(ZoneOffset.ofHours(-4), next.offset)
+    }
+
+    @Test
+    fun dstFallBack_ambiguousWallTimeChoosesFirstOccurrenceWhenBothAreFuture() {
+        val newYork = ZoneId.of("America/New_York")
+        val now = ZonedDateTime.of(LocalDateTime.of(2026, 11, 1, 0, 30), newYork)
+        val alarm = make(hour = 1, minute = 30, days = emptySet())
+
+        val next = AlarmScheduling.nextFire(alarm, now, newYork)
+
+        assertEquals(LocalDateTime.of(2026, 11, 1, 1, 30), next.toLocalDateTime())
+        assertEquals(ZoneOffset.ofHours(-4), next.offset)
+    }
+
+    @Test
+    fun dstFallBack_secondOccurrenceIsStillEligibleAfterFirstHasPassed() {
+        val newYork = ZoneId.of("America/New_York")
+        val now = ZonedDateTime.ofLocal(
+            LocalDateTime.of(2026, 11, 1, 1, 15),
+            newYork,
+            ZoneOffset.ofHours(-5),
+        )
+        val alarm = make(hour = 1, minute = 30, days = emptySet())
+
+        val next = AlarmScheduling.nextFire(alarm, now, newYork)
+
+        assertEquals(LocalDateTime.of(2026, 11, 1, 1, 30), next.toLocalDateTime())
+        assertEquals(ZoneOffset.ofHours(-5), next.offset)
     }
 
     @Test
