@@ -1,5 +1,7 @@
 package dev.chuds.stillclock.ui.timer
 
+import android.os.SystemClock
+import android.provider.Settings
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -32,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -54,14 +57,26 @@ fun TimerScreen(
     onCancel: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val now by produceState(initialValue = System.currentTimeMillis(), key1 = state.deadlineEpochMs) {
+    val context = LocalContext.current
+    val bootCount = remember(context) {
+        runCatching { Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT) }.getOrNull()
+    }
+    val now by produceState(
+        initialValue = TimerNow(System.currentTimeMillis(), SystemClock.elapsedRealtime()),
+        key1 = state.deadlineEpochMs,
+        key2 = state.deadlineElapsedRealtimeMs,
+    ) {
         while (true) {
-            value = System.currentTimeMillis()
+            value = TimerNow(System.currentTimeMillis(), SystemClock.elapsedRealtime())
             delay(100L)
         }
     }
 
-    val remainingMs = state.remainingMs(now)
+    val remainingMs = state.remainingMs(
+        nowEpochMs = now.epochMs,
+        nowElapsedRealtimeMs = now.elapsedRealtimeMs,
+        currentBootCount = bootCount,
+    )
     val finished = state.isRunning && remainingMs <= 0L
 
     Box(
@@ -90,6 +105,11 @@ fun TimerScreen(
         }
     }
 }
+
+private data class TimerNow(
+    val epochMs: Long,
+    val elapsedRealtimeMs: Long,
+)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

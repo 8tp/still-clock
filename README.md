@@ -4,6 +4,8 @@
 
 #### A quiet clock, alarms, timer, and stopwatch for Android.
 
+part of the [still](STILL.md) family. the pact governs every line of code in this repo.
+
 <br>
 
 <img src="docs/screenshots/clock.png" width="180" alt="Clock tab — large serif live time, lowercase weekday and date below">&nbsp;<img src="docs/screenshots/alarms.png" width="180" alt="Alarms tab — serif times, sans labels, mono day-of-week row, text on/off toggle">&nbsp;<img src="docs/screenshots/timer.png" width="180" alt="Timer tab — duration chips, type-your-own field, and lowercase verbs">&nbsp;<img src="docs/screenshots/stopwatch.png" width="180" alt="Stopwatch tab — serif HH:MM:SS.cc readout with start, lap, reset">
@@ -35,7 +37,7 @@ It also subsumes the original `still-bedtime` idea: the per-alarm `soft` toggle 
 
 - No `INTERNET` permission. Ever.
 - No analytics, no telemetry, no Firebase, no Google Play Services, no ads.
-- No alarm-sound library; one bundled CC0 `.ogg` plus the system alarm ringtones via `RingtoneManager`. That's it.
+- No alarm-sound library; four bundled CC0 `.ogg` tones plus the system alarm ringtones via `RingtoneManager`. That's it.
 - No alarm gimmicks: no math-puzzle dismiss, no shake-to-snooze, no photo-of-bathroom-to-dismiss, no scan-the-shampoo-barcode-to-dismiss.
 - No widgets, no quick-settings tile, no app shortcuts, no Tasker integration, no notification-listener service, no accessibility service.
 - No multiple simultaneous timers. One timer is one timer. If you want two, use the alarm tab.
@@ -43,12 +45,13 @@ It also subsumes the original `still-bedtime` idea: the per-alarm `soft` toggle 
 - No NTP sync, no atomic-clock pulls, no time-zone download.
 - No `+` button. New alarms are reached via the `new` footer verb.
 
-Six permissions ARE declared because they are unavoidable for a clock app whose alarms have to fire over a locked screen. None of them involves the network. None pulls a third-party SDK.
+Seven permissions ARE declared because they are unavoidable for a clock app whose alarms have to fire over a locked screen. None of them involves the network. None pulls a third-party SDK.
 
 | Permission | Why it's needed |
 | --- | --- |
 | `POST_NOTIFICATIONS` | Android 13+ runtime requirement to surface alarm and timer notifications. Asked the first time you enable an alarm or start a timer. |
-| `SCHEDULE_EXACT_ALARM` | Android 12+ runtime requirement for `AlarmManager.setAlarmClock` and the timer's `setExactAndAllowWhileIdle`. An alarm that fires ten minutes late is broken. |
+| `SCHEDULE_EXACT_ALARM` | Android 12 / 12L runtime requirement for `AlarmManager.setAlarmClock` and the timer's `setExactAndAllowWhileIdle`. An alarm that fires ten minutes late is broken. |
+| `USE_EXACT_ALARM` | Android 13+ exact-alarm declaration for apps whose core purpose is alarms and timers, avoiding a first-run trip through special app access settings. |
 | `RECEIVE_BOOT_COMPLETED` | `AlarmManager` forgets every armed alarm across reboots; without this every alarm dies overnight. |
 | `USE_FULL_SCREEN_INTENT` | Android 14+ requires this manifest declaration to launch the alarm-fires Activity over the lockscreen via the notification's full-screen intent. |
 | `WAKE_LOCK` | Keep the CPU and screen alive while the alarm is ringing so the tone, vibration, and dismiss/snooze UI stay responsive. |
@@ -58,7 +61,7 @@ Six permissions ARE declared because they are unavoidable for a clock app whose 
 
 | File | What it guarantees |
 | --- | --- |
-| `app/src/main/AndroidManifest.xml` | Six alarm-related permissions disclosed with comments; zero networking permissions; two `BroadcastReceiver`s and one extra `Activity`, all not exported except the boot receiver |
+| `app/src/main/AndroidManifest.xml` | Seven alarm-related permissions disclosed with comments; zero networking permissions; three `BroadcastReceiver`s and one extra `Activity`, all not exported except the boot receiver |
 | `app/src/main/res/xml/data_extraction_rules.xml` | Excludes every sharedpref / file / database domain from cloud backup and device transfer |
 | `app/build.gradle.kts` | Dependencies only on AndroidX, Compose, and DataStore — no Firebase, no GMS, no analytics SDK, no alarm/timer library |
 
@@ -88,7 +91,7 @@ MainActivity
         └── ui/components/                 StillDivider, StillTabBar, StillMenuItem, StillToggle, StillNumberPicker
 ```
 
-Kotlin, Jetpack Compose, AGP 9.2.1, Gradle Kotlin DSL. Everything lives in a single DataStore-Preferences file (`stillclock.preferences_pb`) — alarm list, timer state, stopwatch state, all settings. Navigation Compose is intentionally avoided; a small sealed-class `Route` lives in `StillClockApp.kt`. Alarm scheduling is `AlarmManager.setAlarmClock` (the OS's user-facing alarm slot, which paints the status-bar alarm icon and survives Doze). Timer is `setExactAndAllowWhileIdle`. The alarm-fires Activity is launched two ways: directly from the receiver (preferred) and via the high-importance notification's full-screen intent (the fallback Android 14+ requires).
+Kotlin, Jetpack Compose, AGP 9.2.1, Gradle Kotlin DSL. Everything lives in a single DataStore-Preferences file (`stillclock.preferences_pb`) — alarm list, timer state, stopwatch state, all settings. Navigation Compose is intentionally avoided; a small sealed-class `Route` lives in `StillClockApp.kt`. Alarm scheduling is `AlarmManager.setAlarmClock` (the OS's user-facing alarm slot, which paints the status-bar alarm icon and survives Doze). Timer scheduling is `setExactAndAllowWhileIdle(ELAPSED_REALTIME_WAKEUP)`, with the wall-clock deadline kept only as a reboot recovery fallback. The alarm-fires Activity is launched two ways: directly from the receiver (preferred) and via the high-importance notification's full-screen intent (the fallback Android 14+ requires).
 
 ## Gestures
 
@@ -125,7 +128,7 @@ Requirements: **JDK 17**, the **Android SDK** with `platforms;android-36` and `b
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The bundled tone (`app/src/main/res/raw/still_tone.ogg`) is generated by `sox` per the recipe in `STILL_TONE_LICENSE.txt` so the licensing is unambiguously CC0. If absent at runtime, the alarm-fires Activity gracefully falls back to the user-selected ringtone, then to the system default alarm ringtone, then to vibration alone.
+The bundled tones (`app/src/main/res/raw/still_chime.ogg`, `still_pulse.ogg`, `still_bell.ogg`, and `still_wood.ogg`) are generated by `sox` per the recipe in `app/src/main/res/raw/still_tone_license.txt` so the licensing is unambiguously CC0. If absent at runtime, the alarm-fires Activity gracefully falls back to the user-selected ringtone, then to the system default alarm ringtone, then to vibration alone.
 
 ## Notes for GrapheneOS
 

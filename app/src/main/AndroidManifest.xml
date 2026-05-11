@@ -28,7 +28,7 @@
                              tone, vibration, and dismiss/snooze UI stay responsive.
     - VIBRATE:               Vibrate alongside the tone — the only haptic surface in the app.
 
-    None of the six involves the network or any third-party SDK.
+    None of the seven involves the network or any third-party SDK.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
@@ -91,6 +91,16 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Re-arm enabled alarms when the user grants exact-alarm special access. -->
+        <receiver
+            android:name=".alarm.ExactAlarmPermissionReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
         <!-- Reschedules armed alarms after a reboot. -->
         <receiver
             android:name=".alarm.BootReceiver"
@@ -98,7 +108,6 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
     </application>

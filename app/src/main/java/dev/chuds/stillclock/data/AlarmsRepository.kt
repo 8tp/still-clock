@@ -3,6 +3,8 @@
 package dev.chuds.stillclock.data
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import java.io.IOException
@@ -24,53 +26,63 @@ import org.json.JSONObject
 
 private val ALARMS_JSON_KEY = stringPreferencesKey("alarms_json")
 
-class AlarmsRepository(private val context: Context) {
+class AlarmsRepository internal constructor(
+    private val dataStore: DataStore<Preferences>,
+) {
+
+    constructor(context: Context) : this(context.stillClockDataStore)
 
     private val mutex = Mutex()
     private val _alarms = MutableStateFlow<List<Alarm>>(emptyList())
     val alarms: StateFlow<List<Alarm>> = _alarms.asStateFlow()
 
-    val alarmsFlow: Flow<List<Alarm>> = context.stillClockDataStore.data
+    val alarmsFlow: Flow<List<Alarm>> = dataStore.data
         .catch { e -> if (e is IOException) emit(androidx.datastore.preferences.core.emptyPreferences()) else throw e }
         .map { prefs -> decode(prefs[ALARMS_JSON_KEY] ?: "[]") }
 
     suspend fun load() = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val prefs = context.stillClockDataStore.data.first()
-            _alarms.value = decode(prefs[ALARMS_JSON_KEY] ?: "[]")
+            _alarms.value = readPersisted()
         }
     }
 
     suspend fun snapshot(): List<Alarm> = withContext(Dispatchers.IO) {
-        val prefs = context.stillClockDataStore.data.first()
-        decode(prefs[ALARMS_JSON_KEY] ?: "[]")
+        readPersisted()
     }
 
     suspend fun upsert(alarm: Alarm): Alarm = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val current = _alarms.value
-            val replaced = if (current.any { it.id == alarm.id }) {
-                current.map { if (it.id == alarm.id) alarm else it }
-            } else {
-                current + alarm
+            persistMutation { current ->
+                if (current.any { it.id == alarm.id }) {
+                    current.map { if (it.id == alarm.id) alarm else it }
+                } else {
+                    current + alarm
+                }
             }
-            persist(replaced)
             alarm
         }
     }
 
     suspend fun delete(id: String) = withContext(Dispatchers.IO) {
         mutex.withLock {
-            persist(_alarms.value.filterNot { it.id == id })
+            persistMutation { current -> current.filterNot { it.id == id } }
         }
     }
 
     suspend fun setEnabled(id: String, enabled: Boolean): Alarm? = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val target = _alarms.value.firstOrNull { it.id == id } ?: return@withContext null
-            val updated = target.copy(enabled = enabled)
-            persist(_alarms.value.map { if (it.id == id) updated else it })
-            updated
+            var updatedAlarm: Alarm? = null
+            persistMutation { current ->
+                val target = current.firstOrNull { it.id == id }
+                if (target == null) {
+                    current
+                } else {
+                    val updated = target.copy(enabled = enabled)
+                    updatedAlarm = updated
+                    current.map { if (it.id == id) updated else it }
+                }
+            }
+            updatedAlarm
         }
     }
 
@@ -78,9 +90,20 @@ class AlarmsRepository(private val context: Context) {
         _alarms.value.firstOrNull { it.id == id } ?: snapshot().firstOrNull { it.id == id }
     }
 
-    private suspend fun persist(list: List<Alarm>) {
-        context.stillClockDataStore.edit { it[ALARMS_JSON_KEY] = encode(list) }
-        _alarms.value = list
+    private suspend fun readPersisted(): List<Alarm> {
+        val prefs = dataStore.data.first()
+        return decode(prefs[ALARMS_JSON_KEY] ?: "[]")
+    }
+
+    private suspend fun persistMutation(transform: (List<Alarm>) -> List<Alarm>): List<Alarm> {
+        var updated = emptyList<Alarm>()
+        dataStore.edit { prefs ->
+            val current = decode(prefs[ALARMS_JSON_KEY] ?: "[]")
+            updated = transform(current)
+            prefs[ALARMS_JSON_KEY] = encode(updated)
+        }
+        _alarms.value = updated
+        return updated
     }
 
     companion object {

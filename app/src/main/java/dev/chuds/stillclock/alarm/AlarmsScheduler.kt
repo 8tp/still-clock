@@ -20,16 +20,21 @@ object AlarmsScheduler {
 
     private const val TAG = "still-clock/scheduler"
 
+    fun canScheduleExactAlarms(context: Context): Boolean {
+        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.S || am.canScheduleExactAlarms()
+    }
+
     fun schedule(context: Context, alarm: Alarm): Long? {
         if (!alarm.enabled) {
             cancel(context, alarm.id)
             return null
         }
-        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
+        if (!canScheduleExactAlarms(context)) {
             Log.w(TAG, "exact-alarm permission missing; alarm ${alarm.id} will not be scheduled")
             return null
         }
+        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
         val zone = ZoneId.systemDefault()
         val next = AlarmScheduling.nextFire(alarm, ZonedDateTime.now(zone), zone)
@@ -67,7 +72,7 @@ object AlarmsScheduler {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
+        if (!canScheduleExactAlarms(context)) {
             Log.w(TAG, "exact-alarm permission missing; snooze for $alarmId will not arm")
             return
         }
