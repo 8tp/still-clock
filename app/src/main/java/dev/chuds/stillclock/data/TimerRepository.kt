@@ -58,6 +58,38 @@ class TimerRepository internal constructor(
         consumed
     }
 
+    /**
+     * Atomic pause: the running-check and the write happen inside one DataStore.edit, so a
+     * concurrent fire-and-clear (AlarmReceiver) can never race a pause read-modify-write
+     * into a zombie paused state with ~0 remaining. Returns true if the pause took effect.
+     */
+    suspend fun pauseIfRunning(
+        nowEpochMs: Long,
+        nowElapsedRealtimeMs: Long,
+        currentBootCount: Int?,
+    ): Boolean = withContext(Dispatchers.IO) {
+        var paused = false
+        dataStore.edit { prefs ->
+            val state = decode(prefs[TIMER_STATE_JSON_KEY])
+            if (!state.isRunning) return@edit
+            val remaining = state.remainingMs(
+                nowEpochMs = nowEpochMs,
+                nowElapsedRealtimeMs = nowElapsedRealtimeMs,
+                currentBootCount = currentBootCount,
+            )
+            if (remaining <= 0L) return@edit
+            val next = state.copy(
+                deadlineEpochMs = null,
+                deadlineElapsedRealtimeMs = null,
+                pausedRemainingMs = remaining,
+                startedBootCount = null,
+            )
+            prefs[TIMER_STATE_JSON_KEY] = encode(next)
+            paused = true
+        }
+        paused
+    }
+
     private fun encode(state: TimerState): String {
         val o = JSONObject()
         if (state.deadlineEpochMs != null) o.put("deadlineEpochMs", state.deadlineEpochMs)

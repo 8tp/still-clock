@@ -117,6 +117,88 @@ class TimerRepositoryTest {
     }
 
     @Test
+    fun pauseIfRunning_setsPausedRemainingFromCurrentTime() = runBlocking {
+        TimerRepository(dataStore).save(
+            TimerState(
+                deadlineEpochMs = 30_000L,
+                deadlineElapsedRealtimeMs = 30_000L,
+                totalDurationMs = 30_000L,
+                pausedRemainingMs = null,
+                startedBootCount = 42,
+            ),
+        )
+
+        val paused = TimerRepository(dataStore).pauseIfRunning(
+            nowEpochMs = 10_000L,
+            nowElapsedRealtimeMs = 10_000L,
+            currentBootCount = 42,
+        )
+
+        assertEquals(true, paused)
+        val saved = TimerRepository(dataStore).snapshot()
+        assertEquals(20_000L, saved.pausedRemainingMs)
+        assertEquals(null, saved.deadlineEpochMs)
+    }
+
+    @Test
+    fun pauseIfRunning_isNoOpWhenIdle() = runBlocking {
+        TimerRepository(dataStore).clear()
+
+        val paused = TimerRepository(dataStore).pauseIfRunning(
+            nowEpochMs = 1L,
+            nowElapsedRealtimeMs = 1L,
+            currentBootCount = 1,
+        )
+
+        assertEquals(false, paused)
+        assertEquals(TimerState.Idle, TimerRepository(dataStore).snapshot())
+    }
+
+    @Test
+    fun pauseIfRunning_doesNotResurrectClearedStateAfterFire() = runBlocking {
+        // Simulate the race: timer fired and AlarmReceiver cleared the state. A pause
+        // call that read snapshot() before the clear used to overwrite Idle with a
+        // ~0 paused state, producing a zombie. pauseIfRunning's edit { } CAS makes the
+        // check-and-write atomic, so a late pause is a no-op.
+        TimerRepository(dataStore).clear()
+
+        val paused = TimerRepository(dataStore).pauseIfRunning(
+            nowEpochMs = 1_000_000L,
+            nowElapsedRealtimeMs = 1_000_000L,
+            currentBootCount = 1,
+        )
+
+        assertEquals(false, paused)
+        assertEquals(TimerState.Idle, TimerRepository(dataStore).snapshot())
+    }
+
+    @Test
+    fun pauseIfRunning_refusesToPauseExpiredTimer() = runBlocking {
+        // A pause attempted after the deadline has been reached (but before AlarmReceiver
+        // has cleared the state) should not land a 0-remaining paused state.
+        TimerRepository(dataStore).save(
+            TimerState(
+                deadlineEpochMs = 1_000L,
+                deadlineElapsedRealtimeMs = 1_000L,
+                totalDurationMs = 30_000L,
+                pausedRemainingMs = null,
+                startedBootCount = 42,
+            ),
+        )
+
+        val paused = TimerRepository(dataStore).pauseIfRunning(
+            nowEpochMs = 5_000L,
+            nowElapsedRealtimeMs = 5_000L,
+            currentBootCount = 42,
+        )
+
+        assertEquals(false, paused)
+        val saved = TimerRepository(dataStore).snapshot()
+        assertEquals(null, saved.pausedRemainingMs)
+        assertEquals(1_000L, saved.deadlineEpochMs)
+    }
+
+    @Test
     fun runningTimerRemainingFallsBackToWallClockAcrossBoots() {
         val state = TimerState(
             deadlineEpochMs = 30_000L,
