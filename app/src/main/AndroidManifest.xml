@@ -91,6 +91,16 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Re-arm enabled alarms when the user grants exact-alarm special access. -->
+        <receiver
+            android:name=".alarm.ExactAlarmPermissionReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
         <!-- Reschedules armed alarms after a reboot. -->
         <receiver
             android:name=".alarm.BootReceiver"

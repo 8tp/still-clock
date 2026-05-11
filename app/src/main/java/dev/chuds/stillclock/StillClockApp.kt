@@ -1,7 +1,11 @@
 // Hand-rolled router — sealed Route, no NavCompose. Same shape as still-notes' StillNotesApp.
 package dev.chuds.stillclock
 
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -116,8 +120,48 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
 
     fun ensureNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            notificationLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            val granted = activityContext.checkSelfPermission(
+                android.Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                notificationLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
+    }
+
+    fun rescheduleEnabledAlarmsAfterExactAlarmGrant() {
+        if (!AlarmsScheduler.canScheduleExactAlarms(context)) return
+        scope.launch {
+            alarmsRepository.snapshot()
+                .filter { it.enabled }
+                .forEach { alarm -> AlarmsScheduler.schedule(context, alarm) }
+        }
+    }
+
+    val exactAlarmLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        if (AlarmsScheduler.canScheduleExactAlarms(context)) {
+            rescheduleEnabledAlarmsAfterExactAlarmGrant()
+        } else {
+            Toast.makeText(activityContext, "exact alarms still disabled", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun requestExactAlarmAccess(): Boolean {
+        if (AlarmsScheduler.canScheduleExactAlarms(context)) return true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                data = Uri.parse("package:${activityContext.packageName}")
+            }
+            runCatching { exactAlarmLauncher.launch(intent) }
+                .onFailure {
+                    Toast.makeText(activityContext, "enable exact alarms in settings", Toast.LENGTH_SHORT).show()
+                }
+        } else {
+            Toast.makeText(activityContext, "enable exact alarms in settings", Toast.LENGTH_SHORT).show()
+        }
+        return false
     }
 
     val hapticsPerformer = rememberHapticsPerformer(settings.hapticsEnabled)
@@ -146,12 +190,9 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
                         onLongPressAlarm = { id -> actionTarget = id },
                         onToggleEnabled = { id ->
                             scope.launch {
-                                ensureNotificationPermission()
                                 val nextEnabled = !(alarms.firstOrNull { it.id == id }?.enabled ?: false)
-                                if (nextEnabled && !AlarmsScheduler.canScheduleExactAlarms(activityContext)) {
-                                    Toast.makeText(activityContext, "enable exact alarms in settings", Toast.LENGTH_SHORT).show()
-                                    return@launch
-                                }
+                                if (nextEnabled && !requestExactAlarmAccess()) return@launch
+                                ensureNotificationPermission()
                                 val updated = alarmsRepository.setEnabled(id, nextEnabled)
                                 if (updated != null) {
                                     if (updated.enabled) AlarmsScheduler.schedule(activityContext, updated)
@@ -162,17 +203,19 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
                         onNew = { route = Route.AlarmEdit(null) },
                         onStartTimer = { ms ->
                             scope.launch {
+                                if (!requestExactAlarmAccess()) return@launch
                                 ensureNotificationPermission()
                                 if (!timerScheduler.start(ms)) {
-                                    Toast.makeText(activityContext, "enable exact alarms in settings", Toast.LENGTH_SHORT).show()
+                                    requestExactAlarmAccess()
                                 }
                             }
                         },
                         onPauseTimer = { scope.launch { timerScheduler.pause() } },
                         onResumeTimer = {
                             scope.launch {
+                                if (!requestExactAlarmAccess()) return@launch
                                 if (!timerScheduler.resume()) {
-                                    Toast.makeText(activityContext, "enable exact alarms in settings", Toast.LENGTH_SHORT).show()
+                                    requestExactAlarmAccess()
                                 }
                             }
                         },
@@ -237,11 +280,8 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
                             is24HourSystem = android.text.format.DateFormat.is24HourFormat(activityContext),
                             onSave = { updated ->
                                 scope.launch {
+                                    if (updated.enabled && !requestExactAlarmAccess()) return@launch
                                     ensureNotificationPermission()
-                                    if (updated.enabled && !AlarmsScheduler.canScheduleExactAlarms(activityContext)) {
-                                        Toast.makeText(activityContext, "enable exact alarms in settings", Toast.LENGTH_SHORT).show()
-                                        return@launch
-                                    }
                                     alarmsRepository.upsert(updated)
                                     AlarmsScheduler.schedule(activityContext, updated)
                                     route = Route.Tabs(Tab.Alarms)
