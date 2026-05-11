@@ -148,10 +148,14 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
     var pendingExactAlarmActionToken by rememberSaveable { mutableStateOf<String?>(null) }
     var exactAlarmSettingsOpen by rememberSaveable { mutableStateOf(false) }
 
-    // Notification permission ask — first time we need it.
+    // Notification permission ask — required before arming alarms/timers on Android 13+.
     val notificationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { /* fall through; user can deny — alarms still fire over lockscreen */ }
+    ) { granted ->
+        if (!granted) {
+            Toast.makeText(activityContext, "enable notifications for alarms", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     BackHandler(enabled = route !is Route.Tabs || (route as Route.Tabs).tab != Tab.Clock) {
         route = when (route) {
@@ -162,15 +166,20 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
 
     val typography = remember(settings.fontPreset) { stillTypographyFor(settings.fontPreset) }
 
-    fun ensureNotificationPermission() {
+    fun hasNotificationPermission(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            activityContext.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+    }
+
+    fun requestNotificationPermission(): Boolean {
+        if (hasNotificationPermission()) return true
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val granted = activityContext.checkSelfPermission(
-                android.Manifest.permission.POST_NOTIFICATIONS,
-            ) == PackageManager.PERMISSION_GRANTED
-            if (!granted) {
-                notificationLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-            }
+            notificationLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            Toast.makeText(activityContext, "enable notifications for alarms", Toast.LENGTH_SHORT).show()
         }
+        return false
     }
 
     suspend fun recoverExactAlarmSchedulesAfterGrant() {
@@ -251,7 +260,7 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
                     requestExactAlarmAccess(action)
                     return@runner
                 }
-                if (action.enabled) ensureNotificationPermission()
+                if (action.enabled && !requestNotificationPermission()) return@runner
                 val updated = alarmsRepository.setEnabled(action.id, action.enabled)
                 if (updated != null) {
                     if (updated.enabled) AlarmsScheduler.schedule(activityContext, updated)
@@ -263,7 +272,7 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
                     requestExactAlarmAccess(action)
                     return@runner
                 }
-                if (action.alarm.enabled) ensureNotificationPermission()
+                if (action.alarm.enabled && !requestNotificationPermission()) return@runner
                 alarmsRepository.upsert(action.alarm)
                 AlarmsScheduler.schedule(activityContext, action.alarm)
                 route = Route.Tabs(Tab.Alarms)
@@ -273,7 +282,7 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
                     requestExactAlarmAccess(action)
                     return@runner
                 }
-                ensureNotificationPermission()
+                if (!requestNotificationPermission()) return@runner
                 if (!timerScheduler.start(action.durationMs)) {
                     requestExactAlarmAccess(action)
                 }
@@ -283,6 +292,7 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
                     requestExactAlarmAccess(action)
                     return@runner
                 }
+                if (!requestNotificationPermission()) return@runner
                 if (!timerScheduler.resume()) {
                     requestExactAlarmAccess(action)
                 }
