@@ -61,7 +61,7 @@ Seven permissions ARE declared because they are unavoidable for a clock app whos
 
 | File | What it guarantees |
 | --- | --- |
-| `app/src/main/AndroidManifest.xml` | Seven alarm-related permissions disclosed with comments; zero networking permissions; two `BroadcastReceiver`s and one extra `Activity`, all not exported except the boot receiver |
+| `app/src/main/AndroidManifest.xml` | Seven alarm-related permissions disclosed with comments; zero networking permissions; three `BroadcastReceiver`s and one extra `Activity`, all not exported except the boot receiver |
 | `app/src/main/res/xml/data_extraction_rules.xml` | Excludes every sharedpref / file / database domain from cloud backup and device transfer |
 | `app/build.gradle.kts` | Dependencies only on AndroidX, Compose, and DataStore — no Firebase, no GMS, no analytics SDK, no alarm/timer library |
 
