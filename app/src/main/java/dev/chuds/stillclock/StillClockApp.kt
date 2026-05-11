@@ -75,7 +75,6 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
 
     LaunchedEffect(Unit) {
         NotificationChannels.ensure(context)
-        alarmsRepository.load()
     }
 
     val settingsFlow = remember(preferencesRepository) {
@@ -87,7 +86,7 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
     }
     val settings by settingsFlow.collectAsState()
 
-    val alarms by alarmsRepository.alarms.collectAsState()
+    val alarms by alarmsRepository.alarmsFlow.collectAsState(initial = emptyList())
     val timerState by timerRepository.state.collectAsState(initial = TimerState.Idle)
     val stopwatchState by stopwatchRepository.state.collectAsState(initial = StopwatchState.Idle)
 

@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -88,6 +89,19 @@ class AlarmsRepositoryTest {
 
         assertNull(updated)
         assertEquals(setOf(firedAlarm.id, siblingAlarm.id), coldRepository.snapshot().map { it.id }.toSet())
+    }
+
+    @Test
+    fun alarmsFlowObservesColdRepositoryMutation() = runBlocking {
+        seedPersistedAlarms()
+        val uiRepository = AlarmsRepository(dataStore)
+        val receiverRepository = AlarmsRepository(dataStore)
+
+        receiverRepository.setEnabled(firedAlarm.id, enabled = false)
+
+        val observed = uiRepository.alarmsFlow.first()
+        assertFalse(observed.first { it.id == firedAlarm.id }.enabled)
+        assertTrue(observed.first { it.id == siblingAlarm.id }.enabled)
     }
 
     private suspend fun seedPersistedAlarms() {
