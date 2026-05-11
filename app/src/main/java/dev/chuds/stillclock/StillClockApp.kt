@@ -64,6 +64,13 @@ private sealed interface Route {
     data object Settings : Route
 }
 
+private sealed interface PendingExactAlarmAction {
+    data class SetAlarmEnabled(val id: String, val enabled: Boolean) : PendingExactAlarmAction
+    data class SaveAlarm(val alarm: Alarm) : PendingExactAlarmAction
+    data class StartTimer(val durationMs: Long) : PendingExactAlarmAction
+    data object ResumeTimer : PendingExactAlarmAction
+}
+
 @Composable
 fun StillClockApp(initialAlarmEditId: String? = null) {
     val context = LocalContext.current.applicationContext
@@ -103,6 +110,7 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
     }
 
     var actionTarget by remember { mutableStateOf<String?>(null) }
+    var pendingExactAlarmAction by remember { mutableStateOf<PendingExactAlarmAction?>(null) }
 
     // Notification permission ask — first time we need it.
     val notificationLauncher = rememberLauncherForActivityResult(
@@ -138,30 +146,89 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
         }
     }
 
+    lateinit var requestExactAlarmAccess: (PendingExactAlarmAction?) -> Boolean
+    lateinit var runExactAlarmAction: suspend (PendingExactAlarmAction) -> Unit
+
     val exactAlarmLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) {
         if (AlarmsScheduler.canScheduleExactAlarms(context)) {
-            rescheduleEnabledAlarmsAfterExactAlarmGrant()
+            val pending = pendingExactAlarmAction
+            pendingExactAlarmAction = null
+            if (pending != null) {
+                scope.launch { runExactAlarmAction(pending) }
+            } else {
+                rescheduleEnabledAlarmsAfterExactAlarmGrant()
+            }
         } else {
+            pendingExactAlarmAction = null
             Toast.makeText(activityContext, "exact alarms still disabled", Toast.LENGTH_SHORT).show()
         }
     }
 
-    fun requestExactAlarmAccess(): Boolean {
-        if (AlarmsScheduler.canScheduleExactAlarms(context)) return true
+    requestExactAlarmAccess = requester@ { action ->
+        if (AlarmsScheduler.canScheduleExactAlarms(context)) return@requester true
+        pendingExactAlarmAction = action
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
                 data = Uri.parse("package:${activityContext.packageName}")
             }
             runCatching { exactAlarmLauncher.launch(intent) }
                 .onFailure {
+                    pendingExactAlarmAction = null
                     Toast.makeText(activityContext, "enable exact alarms in settings", Toast.LENGTH_SHORT).show()
                 }
         } else {
+            pendingExactAlarmAction = null
             Toast.makeText(activityContext, "enable exact alarms in settings", Toast.LENGTH_SHORT).show()
         }
-        return false
+        return@requester false
+    }
+
+    runExactAlarmAction = runner@ { action ->
+        when (action) {
+            is PendingExactAlarmAction.SetAlarmEnabled -> {
+                if (action.enabled && !AlarmsScheduler.canScheduleExactAlarms(context)) {
+                    requestExactAlarmAccess(action)
+                    return@runner
+                }
+                if (action.enabled) ensureNotificationPermission()
+                val updated = alarmsRepository.setEnabled(action.id, action.enabled)
+                if (updated != null) {
+                    if (updated.enabled) AlarmsScheduler.schedule(activityContext, updated)
+                    else AlarmsScheduler.cancel(activityContext, action.id)
+                }
+            }
+            is PendingExactAlarmAction.SaveAlarm -> {
+                if (action.alarm.enabled && !AlarmsScheduler.canScheduleExactAlarms(context)) {
+                    requestExactAlarmAccess(action)
+                    return@runner
+                }
+                if (action.alarm.enabled) ensureNotificationPermission()
+                alarmsRepository.upsert(action.alarm)
+                AlarmsScheduler.schedule(activityContext, action.alarm)
+                route = Route.Tabs(Tab.Alarms)
+            }
+            is PendingExactAlarmAction.StartTimer -> {
+                if (!AlarmsScheduler.canScheduleExactAlarms(context)) {
+                    requestExactAlarmAccess(action)
+                    return@runner
+                }
+                ensureNotificationPermission()
+                if (!timerScheduler.start(action.durationMs)) {
+                    requestExactAlarmAccess(action)
+                }
+            }
+            PendingExactAlarmAction.ResumeTimer -> {
+                if (!AlarmsScheduler.canScheduleExactAlarms(context)) {
+                    requestExactAlarmAccess(action)
+                    return@runner
+                }
+                if (!timerScheduler.resume()) {
+                    requestExactAlarmAccess(action)
+                }
+            }
+        }
     }
 
     val hapticsPerformer = rememberHapticsPerformer(settings.hapticsEnabled)
@@ -191,32 +258,25 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
                         onToggleEnabled = { id ->
                             scope.launch {
                                 val nextEnabled = !(alarms.firstOrNull { it.id == id }?.enabled ?: false)
-                                if (nextEnabled && !requestExactAlarmAccess()) return@launch
-                                ensureNotificationPermission()
-                                val updated = alarmsRepository.setEnabled(id, nextEnabled)
-                                if (updated != null) {
-                                    if (updated.enabled) AlarmsScheduler.schedule(activityContext, updated)
-                                    else AlarmsScheduler.cancel(activityContext, id)
-                                }
+                                val action = PendingExactAlarmAction.SetAlarmEnabled(id, nextEnabled)
+                                if (nextEnabled && !requestExactAlarmAccess(action)) return@launch
+                                runExactAlarmAction(action)
                             }
                         },
                         onNew = { route = Route.AlarmEdit(null) },
                         onStartTimer = { ms ->
                             scope.launch {
-                                if (!requestExactAlarmAccess()) return@launch
-                                ensureNotificationPermission()
-                                if (!timerScheduler.start(ms)) {
-                                    requestExactAlarmAccess()
-                                }
+                                val action = PendingExactAlarmAction.StartTimer(ms)
+                                if (!requestExactAlarmAccess(action)) return@launch
+                                runExactAlarmAction(action)
                             }
                         },
                         onPauseTimer = { scope.launch { timerScheduler.pause() } },
                         onResumeTimer = {
                             scope.launch {
-                                if (!requestExactAlarmAccess()) return@launch
-                                if (!timerScheduler.resume()) {
-                                    requestExactAlarmAccess()
-                                }
+                                val action = PendingExactAlarmAction.ResumeTimer
+                                if (!requestExactAlarmAccess(action)) return@launch
+                                runExactAlarmAction(action)
                             }
                         },
                         onCancelTimer = { scope.launch { timerScheduler.cancel() } },
@@ -280,11 +340,9 @@ fun StillClockApp(initialAlarmEditId: String? = null) {
                             is24HourSystem = android.text.format.DateFormat.is24HourFormat(activityContext),
                             onSave = { updated ->
                                 scope.launch {
-                                    if (updated.enabled && !requestExactAlarmAccess()) return@launch
-                                    ensureNotificationPermission()
-                                    alarmsRepository.upsert(updated)
-                                    AlarmsScheduler.schedule(activityContext, updated)
-                                    route = Route.Tabs(Tab.Alarms)
+                                    val action = PendingExactAlarmAction.SaveAlarm(updated)
+                                    if (updated.enabled && !requestExactAlarmAccess(action)) return@launch
+                                    runExactAlarmAction(action)
                                 }
                             },
                             onDelete = {
